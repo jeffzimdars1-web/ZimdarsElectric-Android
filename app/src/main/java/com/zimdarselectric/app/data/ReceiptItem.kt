@@ -15,7 +15,29 @@ data class ReceiptItem(
     val store: String,
     val date: Long,
     val expenseId: Long,
+    /** Position of this line on its receipt. */
+    val index: Int = 0,
+    /** What you decided for stock: a stock item id, "counted" (already in your count), "skip" (not stock), or blank (not decided). */
+    val stock: String = "",
+    /** The expense's tax category; only materials are offered for stock. */
+    val category: String = "",
 ) {
+    val isMaterial: Boolean get() = category.startsWith("Materials")
+    val decided: Boolean get() = stock.isNotBlank()
+
+    /** Keys a stock item remembers so this same product on a future receipt goes straight to stock. */
+    val keys: List<String> get() = listOfNotNull(
+        sku.takeIf { it.isNotBlank() }?.let { "sku:" + store.substringBefore(' ').lowercase() + ":" + it },
+        "name:" + name.trim().lowercase(),
+    )
+
+    /** How many pieces (or feet) one receipt line adds to [m]. */
+    fun piecesFor(m: Material): Double = qty * when {
+        m.packSize > 1.0 -> m.packSize
+        m.unit.equals("ft", true) && feet != null -> feet!!.toDouble()
+        else -> 1.0
+    }
+
     /** Pieces per pack if the receipt name says so ("250PK", "100 pack"). */
     val packCount: Int? get() = LabelReader.read(name).packCount
 
@@ -31,7 +53,7 @@ data class ReceiptItem(
                     val o = a.optJSONObject(i) ?: return@mapNotNull null
                     val each = o.optDouble("each", 0.0)
                     ReceiptItem(o.optString("name"), o.optDouble("qty", 1.0), each, o.optDouble("paidEach", each),
-                        o.optString("sku"), o.optString("model"), e.vendor, e.date, e.id)
+                        o.optString("sku"), o.optString("model"), e.vendor, e.date, e.id, i, o.optString("stock"), e.category)
                 }
             }.getOrDefault(emptyList())
         }
@@ -49,6 +71,19 @@ data class ReceiptItem(
             LabelReader.normalizeText(text).split(' ', '-', '/', ',').map { it.trim('.', '(', ')') }
                 .flatMap { (expand[it] ?: it).split(' ') }
                 .filter { it.length >= 3 && it !in skip }.toSet()
+
+        /** Writes a stock decision onto one line of a receipt's item list. */
+        fun mark(itemsJson: String, index: Int, value: String): String = runCatching {
+            val a = JSONArray(itemsJson); a.optJSONObject(index)?.put("stock", value); a.toString()
+        }.getOrDefault(itemsJson)
+
+        /** Stock items that look like this receipt line, best first. */
+        fun suggest(r: ReceiptItem, materials: List<Material>): List<Material> {
+            val keys = r.keys
+            val w = words(r.name + " " + r.model)
+            return materials.map { m -> m to (if (m.matchesReceipt(keys)) 100 else words(m.name + " " + m.spec).count { it in w }) }
+                .filter { it.second > 0 }.sortedByDescending { it.second }.map { it.first }
+        }
 
         /** Receipt lines that look like [query], best match first. Blank query lists everything. */
         fun search(items: List<ReceiptItem>, query: String): List<ReceiptItem> {

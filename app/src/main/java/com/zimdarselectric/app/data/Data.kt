@@ -65,7 +65,11 @@ data class Material(
     @ColumnInfo(defaultValue = "0") val packSize: Double = 0.0,
     /** Barcodes (UPC) scanned for this item, comma-separated. */
     @ColumnInfo(defaultValue = "") val barcodes: String = "",
+    /** Receipt names and store item numbers that are this item (one per line), so receipts can add to stock by themselves. */
+    @ColumnInfo(defaultValue = "") val aliases: String = "",
 ) {
+    fun matchesReceipt(keys: List<String>) = keys.any { k -> aliases.lines().any { it == k } }
+    fun withAliases(keys: List<String>) = copy(aliases = (aliases.lines() + keys).map { it.trim() }.filter { it.isNotBlank() }.distinct().joinToString("\n"))
     fun hasBarcode(code: String) = code.isNotBlank() && barcodes.split(',').any { it == code }
     fun withBarcodes(codes: List<String>) = copy(barcodes = (barcodes.split(',') + codes).map { it.trim() }.filter { it.isNotBlank() }.distinct().joinToString(","))
 }
@@ -266,6 +270,12 @@ interface AppDao {
 
     @Query("SELECT * FROM Expense")
     suspend fun expensesNow(): List<Expense>
+
+    @Query("SELECT * FROM Expense WHERE id = :id")
+    suspend fun expense(id: Long): Expense?
+
+    @Query("SELECT * FROM Material")
+    suspend fun materialsNow(): List<Material>
     @Delete suspend fun deleteExpense(e: Expense)
 
     @Query("SELECT * FROM Settings WHERE id = 1")
@@ -318,6 +328,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 9 lets stock items remember their receipt names. */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Material` ADD COLUMN `aliases` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** Version 8 keeps the item lines from each receipt, so stock prices can come from what you paid. */
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -341,7 +358,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -351,7 +368,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build().also { instance = it }
         }
     }

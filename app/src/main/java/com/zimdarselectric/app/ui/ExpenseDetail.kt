@@ -63,6 +63,8 @@ fun ExpenseDetailScreen(vm: AppViewModel, expenseId: Long, onBack: () -> Unit) {
     var editing by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<Attachment?>(null) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
+    var stockLine by remember { mutableStateOf<com.zimdarselectric.app.data.ReceiptItem?>(null) }
+    val materials by vm.materials.collectAsState()
 
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val f = pendingPhoto
@@ -104,9 +106,10 @@ fun ExpenseDetailScreen(vm: AppViewModel, expenseId: Long, onBack: () -> Unit) {
             if (lines.isNotEmpty()) {
                 SectionHeader("", "What you bought", "${lines.size}")
                 lines.forEach { r ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Row(Modifier.fillMaxWidth().clickable { stockLine = r }.padding(vertical = 6.dp)) {
                         Column(Modifier.weight(1f)) {
                             Text(r.name, color = Z.text, fontSize = 14.sp)
+                            Label(receiptLineStatus(r, materials), color = if (r.decided) Z.muted else Z.neon)
                             Label(listOf(if (r.qty != 1.0) "${com.zimdarselectric.app.data.qtyText(r.qty)} × ${money(r.each)}" else "", if (r.model.isNotBlank()) "Model ${r.model}" else "").filter { it.isNotBlank() }.joinToString(" · "))
                         }
                         Text(money(r.paidEach * r.qty), color = Z.text, fontSize = 14.sp)
@@ -145,6 +148,7 @@ fun ExpenseDetailScreen(vm: AppViewModel, expenseId: Long, onBack: () -> Unit) {
         }
     }
 
+    stockLine?.let { r -> ReceiptLineDialog(vm, r) { stockLine = null } }
     if (editing) ExpenseDialog(e, onDismiss = { editing = false }, onDelete = { vm.deleteExpense(e); editing = false; onBack() }) {
         vm.addExpense(it); editing = false
     }

@@ -27,3 +27,18 @@ class ReceiptItemTest {
         assertTrue(ReceiptItem.search(items, "ceiling fan").isEmpty())
     }
 }
+
+class ReceiptStockTest {
+    @org.junit.Test fun marksAndMatches() {
+        val json = """[{"name":"ID TWISTER TAN 250PK JAR","sku":"663286","qty":2,"each":34.98,"paidEach":38.04}]"""
+        val marked = ReceiptItem.mark(json, 0, "7")
+        val e = Expense(id = 3, date = 1L, vendor = "Lowe's Utica", amount = 1.0, category = "Materials + supplies (line 22)", items = marked)
+        val r = ReceiptItem.from(e).single()
+        org.junit.Assert.assertEquals("7", r.stock)
+        org.junit.Assert.assertTrue(r.isMaterial)
+        val wireNuts = Material(id = 7, name = "Twister Wire Connectors", packSize = 250.0).withAliases(r.keys)
+        org.junit.Assert.assertTrue(wireNuts.matchesReceipt(r.keys))
+        org.junit.Assert.assertEquals(500.0, r.piecesFor(wireNuts), 0.001)
+        org.junit.Assert.assertEquals(wireNuts, ReceiptItem.suggest(r, listOf(Material(id = 1, name = "Insulated staples"), wireNuts)).first())
+    }
+}

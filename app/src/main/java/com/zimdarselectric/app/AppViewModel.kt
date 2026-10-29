@@ -246,6 +246,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 id = match.id
             } else {
                 id = dao.insertExpense(e); existing[k] = e.copy(id = id); added++
+                autoStock(id)
             }
             for (f in files) {
                 val dest = java.io.File(receiptDir(id), "${System.currentTimeMillis()}_${safeName(f.name)}")
@@ -255,6 +256,62 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         onDone(added, items.size - added)
     }
+    // ---------- Receipts -> stock ----------
+    enum class ReceiptAction { ADD, COUNTED, SKIP }
+
+    private suspend fun markLine(r: com.zimdarselectric.app.data.ReceiptItem, value: String) {
+        val e = dao.expense(r.expenseId) ?: return
+        dao.updateExpense(e.copy(items = com.zimdarselectric.app.data.ReceiptItem.mark(e.items, r.index, value)))
+    }
+
+    private suspend fun addLineToStock(r: com.zimdarselectric.app.data.ReceiptItem, m0: Material) {
+        val m = dao.material(m0.id) ?: return
+        val pieces = r.piecesFor(m)
+        val unitCost = if (pieces > 0) r.paidEach * r.qty / pieces else 0.0
+        dao.updateMaterial(m.copy(onHand = m.onHand + pieces, cost = if (m.cost == 0.0) unitCost else m.cost).withAliases(r.keys))
+        val day = java.text.SimpleDateFormat("MMM d", java.util.Locale.US).format(java.util.Date(r.date))
+        dao.insertMove(StockMove(materialId = m.id, delta = pieces, reason = "From receipt · ${r.store} $day"))
+        markLine(r, m.id.toString())
+    }
+
+    /** Lines on a newly imported receipt that you've matched before go straight into stock. */
+    private suspend fun autoStock(expenseId: Long) {
+        val e = dao.expense(expenseId) ?: return
+        val mats = dao.materialsNow()
+        com.zimdarselectric.app.data.ReceiptItem.from(e).filter { !it.decided }.forEach { r ->
+            mats.firstOrNull { it.matchesReceipt(r.keys) }?.let { addLineToStock(r, it) }
+        }
+    }
+
+    /** Your decision for one receipt line: add it to a stock item, say it's already counted, or not stock at all. */
+    fun receiptToStock(r: com.zimdarselectric.app.data.ReceiptItem, m: Material?, action: ReceiptAction) = viewModelScope.launch {
+        when (action) {
+            ReceiptAction.ADD -> if (m != null) addLineToStock(r, m)
+            ReceiptAction.COUNTED -> {
+                if (m != null) dao.material(m.id)?.let { cur -> dao.updateMaterial((if (cur.cost == 0.0) cur.copy(cost = r.paidEach * r.qty / r.piecesFor(cur)) else cur).withAliases(r.keys)) }
+                markLine(r, "counted")
+            }
+            ReceiptAction.SKIP -> markLine(r, "skip")
+        }
+    }
+
+    /** Makes a new stock item from a receipt line (name from the catalog when it can tell) and adds the line to it. */
+    fun newStockFromReceipt(r: com.zimdarselectric.app.data.ReceiptItem, onDone: (Material) -> Unit = {}) = viewModelScope.launch {
+        val guess = com.zimdarselectric.app.data.LabelReader.read(r.name)
+        val top = guess.matches.firstOrNull()
+        val feet = r.feet
+        val pack = r.packCount?.takeIf { it > 1 }?.toDouble() ?: 0.0
+        val m = Material(
+            name = top?.name ?: r.name.lowercase().split(' ').joinToString(" ") { it.replaceFirstChar(Char::uppercase) },
+            spec = listOfNotNull(guess.brand, r.model.takeIf { it.isNotBlank() }).joinToString(" "),
+            unit = if (feet != null) "ft" else top?.unit ?: "ea",
+            packSize = pack,
+        )
+        val id = dao.insertMaterial(m)
+        addLineToStock(r, m.copy(id = id))
+        dao.material(id)?.let(onDone)
+    }
+
     fun deleteExpense(e: Expense) = viewModelScope.launch {
         dao.attachmentsFor(e.id).forEach { a -> java.io.File(a.path).delete(); dao.deleteAttachment(a) }
         dao.deleteExpense(e)

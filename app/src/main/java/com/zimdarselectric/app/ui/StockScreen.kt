@@ -60,6 +60,10 @@ fun StockScreen(vm: AppViewModel) {
         }
     }
 
+    val receiptItems by vm.receiptItems.collectAsState()
+    val openReceiptLines = receiptItems.count { !it.decided && it.isMaterial }
+    var reviewing by remember { mutableStateOf(false) }
+
     fun free(m: Material) = m.onHand - (holds[m.id] ?: 0.0)
     val low = materials.filter { free(it) < it.alertLevel || free(it) < 0 }
     val held = materials.filter { (holds[it.id] ?: 0.0) > 0 }
@@ -78,6 +82,7 @@ fun StockScreen(vm: AppViewModel) {
                 Box(Modifier.width(96.dp)) { NeonButton("+ Add", Modifier.fillMaxWidth()) { edit(Material(name = "")) } }
             }
         }
+        if (openReceiptLines > 0) { Spacer(Modifier.height(12.dp)); ReceiptBanner(openReceiptLines) { reviewing = true } }
         Spacer(Modifier.height(12.dp))
         Field("Search (e.g. romex 12-2, 20A gfci)", search, { search = it })
         if (search.trim().length >= 2) {
@@ -119,6 +124,7 @@ fun StockScreen(vm: AppViewModel) {
     }
 
     editing?.let { m -> MaterialDialog(vm, m, initialPhoto = editPhoto ?: m.photoPath, initialGuess = editGuess) { editing = null } }
+    if (reviewing) ReceiptReviewDialog(vm) { reviewing = false }
 }
 
 @Composable
