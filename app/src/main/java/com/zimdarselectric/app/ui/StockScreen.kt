@@ -1,6 +1,9 @@
 package com.zimdarselectric.app.ui
 
 import androidx.compose.foundation.background
+import com.zimdarselectric.app.data.boxText
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,7 +101,11 @@ fun StockScreen(vm: AppViewModel) {
                 items(low, key = { "o${it.id}" }) { m ->
                     val f = free(m)
                     val buy = maxOf(m.alertLevel - f, -f, 0.0)
-                    ListRow(m.name, "Buy ${qtyText(buy)} ${m.unit} · about ${money(buy * m.cost)}".uppercase(), onClick = { edit(m) }) { StatusDot("Low", Z.warn) }
+                    val text = if (m.packSize > 1.0) {
+                        val boxes = maxOf(1.0, Math.ceil(buy / m.packSize - 1e-9))
+                        "Buy ${qtyText(boxes)} box${if (boxes == 1.0) "" else "es"} (${qtyText(boxes * m.packSize)} ${m.unit}) · about ${money(boxes * m.packSize * m.cost)}"
+                    } else "Buy ${qtyText(buy)} ${m.unit} · about ${money(buy * m.cost)}"
+                    ListRow(m.name, text.uppercase(), onClick = { edit(m) }, photo = m.photoPath) { StatusDot("Low", Z.warn) }
                 }
                 item { SectionHeader("01", "Everything") }
             }
@@ -136,9 +143,9 @@ private fun StockRow(m: Material, hold: Double, onClick: () -> Unit) {
         }
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth()) {
-            Num("On hand", "${qtyText(m.onHand)} ${m.unit}", Z.text, Modifier.weight(1f))
+            Num("On hand", "${qtyText(m.onHand)} ${m.unit}", Z.text, Modifier.weight(1f), boxText(m.onHand, m.packSize))
             Num("On hold", "${qtyText(hold)} ${m.unit}", Z.text, Modifier.weight(1f))
-            Num("Free", "${qtyText(free)} ${m.unit}", if (low) Z.warn else Z.text, Modifier.weight(1f))
+            Num("Free", "${qtyText(free)} ${m.unit}", if (low) Z.warn else Z.text, Modifier.weight(1f), boxText(free, m.packSize))
         }
         Spacer(Modifier.height(6.dp))
         val total = maxOf(m.onHand, hold, 1.0)
@@ -155,8 +162,11 @@ private fun StockRow(m: Material, hold: Double, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Num(label: String, value: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
-    Column(modifier) { Label(label); Text(value, color = color, fontSize = 19.sp, fontFamily = Condensed) }
+private fun Num(label: String, value: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier, sub: String = "") {
+    Column(modifier) {
+        Label(label); Text(value, color = color, fontSize = 19.sp, fontFamily = Condensed)
+        if (sub.isNotBlank()) Text(sub, color = Z.muted, fontSize = 11.sp)
+    }
 }
 
 @Composable
@@ -177,6 +187,15 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
     var viewing by remember { mutableStateOf(false) }
     var guess by remember { mutableStateOf(initialGuess) }
     var codes by remember { mutableStateOf(m.barcodes) }
+    // Bought by the box: stock and cost are kept per piece, entered per box.
+    var boxed by remember { mutableStateOf(m.packSize > 1.0) }
+    var pack by remember { mutableStateOf(if (m.packSize > 1.0) qtyText(m.packSize) else "") }
+    var boxPrice by remember { mutableStateOf(if (m.packSize > 1.0 && m.cost > 0) qtyText(Math.round(m.cost * m.packSize * 100) / 100.0) else "") }
+    var boxesNow by remember { mutableStateOf("") }
+    var looseNow by remember { mutableStateOf("") }
+    var alertBoxes by remember { mutableStateOf(if (m.packSize > 1.0 && m.alertLevel > 0) qtyText(m.alertLevel / m.packSize) else "") }
+    val packN = pack.toNum()
+    val boxOn = boxed && packN > 1.0
     val materials by vm.materials.collectAsState()
 
     /** Fills only the boxes that are still empty, so nothing you typed gets replaced. */
@@ -186,7 +205,9 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
         if (name.isBlank() && top != null) { name = top.name; nameLocked = true }
         if (spec.isBlank()) spec = listOf(top?.spec ?: "", g.spec).filter { it.isNotBlank() }.joinToString(" · ")
         if ((unit.isBlank() || unit == "ea") && g.unit != null && isNew) unit = g.unit!!
-        if (cost.isBlank()) g.unitCost?.let { cost = qtyText(it) }
+        if (g.packCount != null && pack.isBlank()) { boxed = true; pack = g.packCount.toString() }
+        if (boxed && boxPrice.isBlank() && g.packCount != null && g.price != null) boxPrice = qtyText(g.price)
+        else if (cost.isBlank()) g.unitCost?.let { cost = qtyText(it) }
         if (g.barcodes.isNotEmpty()) codes = m.copy(barcodes = codes).withBarcodes(g.barcodes).barcodes
     }
     LaunchedEffect(Unit) { initialGuess?.let { applyGuess(it) } }
@@ -211,13 +232,17 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
     ZDialog(if (isNew) "Add to stock" else "Edit stock item", cancel,
         confirm = "Save" to {
             if (name.isNotBlank()) {
+                val unitCost = if (boxOn && boxPrice.isNotBlank()) boxPrice.toNum() / packN else cost.toNum()
                 val base = m.copy(name = name.trim(), spec = spec.trim(), unit = unit.trim().ifBlank { "ea" },
-                    alertLevel = alert.toNum(), cost = cost.toNum(), location = location.trim().ifBlank { "Truck" }, photoPath = photo, barcodes = codes)
+                    alertLevel = if (boxOn) alertBoxes.toNum() * packN else alert.toNum(), cost = unitCost,
+                    packSize = if (boxOn) packN else 0.0,
+                    location = location.trim().ifBlank { "Truck" }, photoPath = photo, barcodes = codes)
                 if (m.photoPath.isNotBlank() && m.photoPath != photo) vm.discardItemPhoto(m.photoPath)
-                if (isNew) vm.saveMaterial(base.copy(onHand = onHand.toNum()))
+                if (isNew) vm.saveMaterial(base.copy(onHand = if (boxOn) boxesNow.toNum() * packN + looseNow.toNum() else onHand.toNum()))
                 else {
+                    val received = if (boxOn) receive.toNum() * packN else receive.toNum()
                     val moves = buildList {
-                        if (receive.toNum() > 0) add(receive.toNum() to "Received")
+                        if (received > 0) add(received to (if (boxOn) "Received ${qtyText(receive.toNum())} box(es)" else "Received"))
                         if (used.toNum() > 0) add(-used.toNum() to "Used (not on a quote)")
                     }
                     vm.saveMaterialWithMoves(base, moves)
@@ -263,21 +288,47 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
                     Field("Unit (ea, ft)", unit, { unit = it }, Modifier.weight(1f))
                     Field("Where", location, { location = it }, Modifier.weight(1f))
                 }
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (isNew) Field("On hand", onHand, { onHand = it }, Modifier.weight(1f), number = true)
-                    Field("Alert under", alert, { alert = it }, Modifier.weight(1f), number = true)
+                Spacer(Modifier.height(10.dp))
+                // Comes in a box?
+                Row(Modifier.fillMaxWidth().clickable { boxed = !boxed }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(24.dp).border(1.5.dp, if (boxed) Z.neon else Z.lineStrong).background(if (boxed) Z.neon else Z.raised), contentAlignment = Alignment.Center) {
+                        if (boxed) Text("✓", color = Z.onNeon, fontSize = 15.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text("Comes in a box or pack", color = Z.text, fontSize = 16.sp)
+                }
+                if (boxed) {
+                    Field("How many in a box (${unit.ifBlank { "ea" }})", pack, { pack = it }, number = true)
+                    if (packN <= 1.0) Text("Enter how many come in one box, like 100.", color = Z.muted, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(6.dp))
-                Field("Your cost per unit (incl. tax)", cost, { cost = it }, number = true)
-                Text("Tip: bought a 250 ft roll for \$500? Enter unit \"ft\" and cost 2.00.", color = Z.muted, fontSize = 12.sp)
-                if (!isNew) {
-                    Spacer(Modifier.height(10.dp))
-                    Label("On hand now: ${qtyText(m.onHand)} ${m.unit}")
+                if (boxOn) {
+                    if (isNew) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Field("Full boxes", boxesNow, { boxesNow = it }, Modifier.weight(1f), number = true)
+                        Field("Loose (${unit.ifBlank { "ea" }})", looseNow, { looseNow = it }, Modifier.weight(1f), number = true)
+                    }
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Field("+ Received", receive, { receive = it }, Modifier.weight(1f), number = true)
-                        Field("− Used", used, { used = it }, Modifier.weight(1f), number = true)
+                        Field("Price per box (incl. tax)", boxPrice, { boxPrice = it }, Modifier.weight(1f), number = true)
+                        Field("Alert under (boxes)", alertBoxes, { alertBoxes = it }, Modifier.weight(1f), number = true)
+                    }
+                    if (boxPrice.toNum() > 0) Text("= ${money(boxPrice.toNum() / packN)} per ${unit.ifBlank { "ea" }}. Quotes use the per-piece cost.", color = Z.muted, fontSize = 12.sp)
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (isNew) Field("On hand", onHand, { onHand = it }, Modifier.weight(1f), number = true)
+                        Field("Alert under", alert, { alert = it }, Modifier.weight(1f), number = true)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Field("Your cost per unit (incl. tax)", cost, { cost = it }, number = true)
+                    Text("Tip: bought a 250 ft roll for \$500? Enter unit \"ft\" and cost 2.00.", color = Z.muted, fontSize = 12.sp)
+                }
+                if (!isNew) {
+                    Spacer(Modifier.height(10.dp))
+                    Label("On hand now: ${qtyText(m.onHand)} ${m.unit}" + boxText(m.onHand, m.packSize).let { if (it.isBlank()) "" else " · $it" })
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Field(if (boxOn) "+ Boxes received" else "+ Received", receive, { receive = it }, Modifier.weight(1f), number = true)
+                        Field("− Used (${unit.ifBlank { "ea" }})", used, { used = it }, Modifier.weight(1f), number = true)
                     }
                 }
             }

@@ -61,6 +61,8 @@ data class Material(
     val location: String = "Truck",
     /** Your own photo of the item, stored on the phone. Blank = no photo yet. */
     @ColumnInfo(defaultValue = "") val photoPath: String = "",
+    /** Pieces in one box or pack (e.g. 100 connectors). 0 = not bought by the box. Stock and cost are always per piece. */
+    @ColumnInfo(defaultValue = "0") val packSize: Double = 0.0,
     /** Barcodes (UPC) scanned for this item, comma-separated. */
     @ColumnInfo(defaultValue = "") val barcodes: String = "",
 ) {
@@ -314,6 +316,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 7 adds "comes in a box" with pieces per box. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Material` ADD COLUMN `packSize` REAL NOT NULL DEFAULT 0")
+    }
+}
+
 /** Version 6 adds the "How I charge" note. */
 val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -323,7 +332,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -333,7 +342,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build().also { instance = it }
         }
     }

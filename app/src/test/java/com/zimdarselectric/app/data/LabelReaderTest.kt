@@ -61,3 +61,12 @@ class LabelReaderTest {
         assertTrue(!g.found)
     }
 }
+
+class BoxTextTest {
+    @org.junit.Test fun boxes() {
+        org.junit.Assert.assertEquals("2 boxes + 37 loose", boxText(237.0, 100.0))
+        org.junit.Assert.assertEquals("1 box", boxText(250.0, 250.0))
+        org.junit.Assert.assertEquals("40 loose", boxText(40.0, 100.0))
+        org.junit.Assert.assertEquals("", boxText(5.0, 0.0))
+    }
+}

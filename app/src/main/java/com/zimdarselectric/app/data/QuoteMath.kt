@@ -59,3 +59,13 @@ fun qtyText(v: Double): String =
     if (v == Math.floor(v) && !v.isInfinite()) v.toLong().toString() else String.format(Locale.US, "%.2f", v).trimEnd('0').trimEnd('.')
 
 fun String.toNum(): Double = this.replace(",", "").replace("$", "").trim().toDoubleOrNull() ?: 0.0
+
+/** "2 boxes + 37" for an amount of pieces when an item comes [pack] to a box. Blank if not boxed. */
+fun boxText(qty: Double, pack: Double): String {
+    if (pack <= 1.0 || qty <= 0.0) return ""
+    val boxes = Math.floor(qty / pack + 1e-9).toLong()
+    val loose = qty - boxes * pack
+    val b = if (boxes == 0L) "" else "$boxes box" + if (boxes == 1L) "" else "es"
+    val l = if (loose < 1e-9) "" else qtyText(loose) + " loose"
+    return listOf(b, l).filter { it.isNotBlank() }.joinToString(" + ")
+}
