@@ -121,12 +121,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Adds receipts from an import file, skipping any already in Books (same day, vendor and amount). */
     fun importExpenses(items: List<Pair<Expense, List<ImportFile>>>, onDone: (added: Int, skipped: Int) -> Unit) = viewModelScope.launch {
         val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
-        val existing = dao.expensesNow().map { Triple(day.format(java.util.Date(it.date)), it.vendor.lowercase(), Math.round(it.amount * 100)) }.toMutableSet()
+        val existing = dao.expensesNow().associateBy { Triple(day.format(java.util.Date(it.date)), it.vendor.lowercase(), Math.round(it.amount * 100)) }.toMutableMap()
         var added = 0
         for ((e, files) in items) {
             val k = Triple(day.format(java.util.Date(e.date)), e.vendor.lowercase(), Math.round(e.amount * 100))
-            if (k in existing) continue
-            val id = dao.insertExpense(e); existing.add(k); added++
+            val match = existing[k]
+            val id: Long
+            if (match != null) {
+                // Already in Books: only add receipt copies if it has none yet.
+                if (files.isEmpty() || dao.attachmentsFor(match.id).isNotEmpty()) continue
+                id = match.id
+            } else {
+                id = dao.insertExpense(e); existing[k] = e.copy(id = id); added++
+            }
             for (f in files) {
                 val dest = java.io.File(receiptDir(id), "${System.currentTimeMillis()}_${safeName(f.name)}")
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dest.writeBytes(f.bytes) }
