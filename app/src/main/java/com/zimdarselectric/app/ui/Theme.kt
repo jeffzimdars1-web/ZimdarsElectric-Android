@@ -186,3 +186,18 @@ fun MoneyRow(label: String, value: String, color: Color = Z.text, bold: Boolean 
         Divider()
     }
 }
+
+/** Dropdown of suggestions shown under a text field as you type. */
+@Composable
+fun SuggestionList(items: List<Pair<String, String>>, onPick: (Int) -> Unit) {
+    if (items.isEmpty()) return
+    Column(Modifier.fillMaxWidth().background(Z.bg).border(1.dp, Z.lineStrong)) {
+        items.forEachIndexed { i, (title, sub) ->
+            Column(Modifier.fillMaxWidth().clickable { onPick(i) }.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Text(title, color = Z.text, fontSize = 15.sp)
+                if (sub.isNotBlank()) Text(sub.uppercase(), fontFamily = Mono, fontSize = 10.sp, color = Z.muted)
+            }
+            if (i < items.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(Z.line))
+        }
+    }
+}

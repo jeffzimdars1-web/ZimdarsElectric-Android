@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zimdarselectric.app.AppViewModel
+import com.zimdarselectric.app.data.Catalog
 import com.zimdarselectric.app.data.Customer
 import com.zimdarselectric.app.data.JobType
 import com.zimdarselectric.app.data.Material
@@ -353,14 +354,23 @@ fun MaterialPicker(
     var nName by remember { mutableStateOf("") }
     var nUnit by remember { mutableStateOf("ea") }
     var nCost by remember { mutableStateOf("") }
+    var nSpec by remember { mutableStateOf("") }
+    var nameLocked by remember { mutableStateOf(false) }
 
     when {
         creating -> ZDialog("New material", onDismiss,
             confirm = "Add to quote" to {
-                if (nName.isNotBlank()) onNewMaterial(Material(name = nName.trim(), unit = nUnit.trim().ifBlank { "ea" }, cost = nCost.toNum()), qty.toNum().takeIf { it > 0 } ?: 1.0)
+                if (nName.isNotBlank()) onNewMaterial(Material(name = nName.trim(), spec = nSpec.trim(), unit = nUnit.trim().ifBlank { "ea" }, cost = nCost.toNum()), qty.toNum().takeIf { it > 0 } ?: 1.0)
             },
             dismiss = "Back" to { creating = false }) {
-            Field("Name (e.g. 12/2 NM-B cable)", nName, { nName = it })
+            Field("Name (e.g. 12/2 NM-B cable)", nName, { nName = it; nameLocked = false })
+            if (!nameLocked && nName.trim().length >= 2) {
+                val sugg = Catalog.search(nName, 5).filter { !it.name.equals(nName.trim(), true) }
+                SuggestionList(sugg.map { it.name to listOf(it.spec, it.category, "per ${it.unit}").filter { s -> s.isNotBlank() }.joinToString(" · ") }) { i ->
+                    nName = sugg[i].name; nUnit = sugg[i].unit; nSpec = sugg[i].spec; nameLocked = true
+                }
+            }
+            if (nSpec.isNotBlank()) Label(nSpec)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Field("Unit (ea, ft)", nUnit, { nUnit = it }, Modifier.weight(1f))
@@ -404,14 +414,22 @@ fun MaterialPicker(
         }
 
         else -> ZDialog("Add material", onDismiss, confirm = "+ New item" to { nName = search; creating = true }, dismiss = "Cancel" to onDismiss) {
-            Field("Search your stock", search, { search = it })
+            Field("Search (e.g. romex 12-2, 20A gfci)", search, { search = it })
             Spacer(Modifier.height(8.dp))
-            val shown = materials.filter { search.isBlank() || it.name.contains(search, true) || it.spec.contains(search, true) }
-            if (shown.isEmpty()) Text("No match. Tap + New item to add it.", color = Z.muted)
-            LazyColumn(Modifier.heightIn(max = 320.dp)) {
+            val shown = materials.filter { search.isBlank() || Catalog.matchesText(it.name + " " + it.spec, search) }
+            val fromCatalog = if (search.trim().length >= 2)
+                Catalog.search(search, 12, exclude = materials.map { it.name.lowercase() }.toSet()) else emptyList()
+            if (shown.isEmpty() && fromCatalog.isEmpty()) Text("No match. Tap + New item to add it.", color = Z.muted)
+            LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                if (shown.isNotEmpty()) item { Label("Your stock", color = Z.neon) }
                 items(shown, key = { it.id }) { m ->
                     val free = m.onHand - (holdsOthers[m.id] ?: 0.0) - thisQuote.filter { it.materialId == m.id }.sumOf { it.qty }
                     ListRow(m.name, "${qtyText(maxOf(free, 0.0))} ${m.unit} free · ${money(m.cost)}/${m.unit}", onClick = { chosen = m; qty = "1" })
+                }
+                if (fromCatalog.isNotEmpty()) item { Spacer(Modifier.height(10.dp)); Label("From the catalog · tap to add", color = Z.neon) }
+                items(fromCatalog, key = { "c" + it.name + it.spec }) { c ->
+                    ListRow(c.name, listOf(c.spec, c.category, "per ${c.unit}").filter { it.isNotBlank() }.joinToString(" · "),
+                        onClick = { nName = c.name; nUnit = c.unit; nSpec = c.spec; creating = true })
                 }
             }
         }

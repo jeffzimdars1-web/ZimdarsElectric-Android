@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zimdarselectric.app.AppViewModel
+import com.zimdarselectric.app.data.Catalog
 import com.zimdarselectric.app.data.Material
 import com.zimdarselectric.app.data.money
 import com.zimdarselectric.app.data.qtyText
@@ -43,7 +44,7 @@ fun StockScreen(vm: AppViewModel) {
     val low = materials.filter { free(it) < it.alertLevel || free(it) < 0 }
     val held = materials.filter { (holds[it.id] ?: 0.0) > 0 }
     val shown = when (filter) { 1 -> low; 2 -> held; else -> materials }
-        .filter { search.isBlank() || it.name.contains(search, true) || it.spec.contains(search, true) }
+        .filter { search.isBlank() || Catalog.matchesText(it.name + " " + it.spec, search) }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
         Spacer(Modifier.height(22.dp))
@@ -55,7 +56,18 @@ fun StockScreen(vm: AppViewModel) {
             Box(Modifier.width(110.dp)) { NeonButton("+ Add", Modifier.fillMaxWidth()) { editing = Material(name = "") } }
         }
         Spacer(Modifier.height(12.dp))
-        Field("Search your stock", search, { search = it })
+        Field("Search (e.g. romex 12-2, 20A gfci)", search, { search = it })
+        if (search.trim().length >= 2) {
+            val sugg = Catalog.search(search, 4, exclude = materials.map { it.name.lowercase() }.toSet())
+            if (sugg.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Label("Not in your stock yet · tap to add", color = Z.neon)
+                SuggestionList(sugg.map { it.name to listOf(it.spec, it.category, "per ${it.unit}").filter { x -> x.isNotBlank() }.joinToString(" · ") }) { i ->
+                    editing = Material(name = sugg[i].name, unit = sugg[i].unit, spec = sugg[i].spec)
+                    search = ""
+                }
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Segmented(listOf("All ${materials.size}", "Low ${low.size}", "On hold ${held.size}"), filter) { filter = it }
         Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -139,6 +151,7 @@ fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
     var receive by remember { mutableStateOf("") }
     var used by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
+    var nameLocked by remember { mutableStateOf(m.name.isNotBlank()) }
 
     if (confirmDelete) {
         ZDialog("Delete ${m.name}?", onClose, confirm = "Delete" to { vm.deleteMaterial(m); onClose() }, dismiss = "Keep" to { confirmDelete = false }) {
@@ -166,7 +179,13 @@ fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
         dismiss = (if (isNew) "Cancel" else "Delete") to { if (isNew) onClose() else confirmDelete = true }) {
         androidx.compose.foundation.lazy.LazyColumn {
             item {
-                Field("Name", name, { name = it })
+                Field("Name (e.g. 12/2 NM-B)", name, { name = it; nameLocked = false })
+                if (isNew && !nameLocked && name.trim().length >= 2) {
+                    val sugg = Catalog.search(name, 5).filter { !it.name.equals(name.trim(), true) }
+                    SuggestionList(sugg.map { it.name to listOf(it.spec, it.category, "per ${it.unit}").filter { x -> x.isNotBlank() }.joinToString(" · ") }) { i ->
+                        name = sugg[i].name; unit = sugg[i].unit; if (spec.isBlank()) spec = sugg[i].spec; nameLocked = true
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
                 Field("Brand / model / size", spec, { spec = it })
                 Spacer(Modifier.height(6.dp))
