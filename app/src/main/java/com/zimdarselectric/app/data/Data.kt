@@ -139,6 +139,8 @@ data class Expense(
     val amount: Double,
     val category: String,
     val note: String = "",
+    /** What was on the receipt, as a JSON list of {name, qty, each, paidEach, sku, model}. Blank if unknown. */
+    @ColumnInfo(defaultValue = "") val items: String = "",
 )
 
 /** A copy of a receipt (photo or PDF) stored on the phone, attached to an expense. */
@@ -316,6 +318,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 8 keeps the item lines from each receipt, so stock prices can come from what you paid. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Expense` ADD COLUMN `items` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** Version 7 adds "comes in a box" with pieces per box. */
 val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -332,7 +341,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -342,7 +351,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .build().also { instance = it }
         }
     }

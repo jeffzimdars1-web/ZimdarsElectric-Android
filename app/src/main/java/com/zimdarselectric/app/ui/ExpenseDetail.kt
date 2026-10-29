@@ -100,6 +100,21 @@ fun ExpenseDetailScreen(vm: AppViewModel, expenseId: Long, onBack: () -> Unit) {
                 Text(e.note, color = Z.text, fontSize = 15.sp)
             }
 
+            val lines = com.zimdarselectric.app.data.ReceiptItem.from(e)
+            if (lines.isNotEmpty()) {
+                SectionHeader("", "What you bought", "${lines.size}")
+                lines.forEach { r ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(r.name, color = Z.text, fontSize = 14.sp)
+                            Label(listOf(if (r.qty != 1.0) "${com.zimdarselectric.app.data.qtyText(r.qty)} × ${money(r.each)}" else "", if (r.model.isNotBlank()) "Model ${r.model}" else "").filter { it.isNotBlank() }.joinToString(" · "))
+                        }
+                        Text(money(r.paidEach * r.qty), color = Z.text, fontSize = 14.sp)
+                    }
+                }
+                Label("Prices include each item's share of the sales tax.")
+            }
+
             SectionHeader("01", "Receipt copies", "${attachments.size}")
             if (attachments.isEmpty()) {
                 Row(Modifier.fillMaxWidth().background(Z.raised).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {

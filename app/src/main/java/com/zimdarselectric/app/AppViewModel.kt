@@ -35,6 +35,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val lines = hot(dao.allLines(), emptyList())
     val expenses = hot(dao.expenses(), emptyList())
     val attachments = hot(dao.attachments(), emptyList())
+    /** Every item line from every receipt in Books, newest first. */
+    val receiptItems: StateFlow<List<com.zimdarselectric.app.data.ReceiptItem>> =
+        hot(dao.expenses().map { list -> list.flatMap { com.zimdarselectric.app.data.ReceiptItem.from(it) } }, emptyList())
     val settings: StateFlow<Settings> = hot(dao.settings().map { it ?: Settings() }, Settings())
 
     /** Material id -> quantity on hold across all open quotes. */
@@ -237,7 +240,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val match = existing[k]
             val id: Long
             if (match != null) {
-                // Already in Books: only add receipt copies if it has none yet.
+                // Already in Books: add the item lines if missing, and receipt copies only if it has none yet.
+                if (e.items.isNotBlank() && match.items.isBlank()) { dao.updateExpense(match.copy(items = e.items)); existing[k] = match.copy(items = e.items) }
                 if (files.isEmpty() || dao.attachmentsFor(match.id).isNotEmpty()) continue
                 id = match.id
             } else {

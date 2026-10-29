@@ -86,7 +86,8 @@ fun parseExpenses(text: String): List<Pair<Expense, List<AppViewModel.ImportFile
                 files.add(AppViewModel.ImportFile(a.optString("name", "receipt"), a.optString("mime", "application/pdf"), bytes))
             }
         }
-        Expense(date = date, vendor = vendor, amount = amount, category = cat, note = o.optString("note")) to files
+        Expense(date = date, vendor = vendor, amount = amount, category = cat, note = o.optString("note"),
+            items = o.optJSONArray("items")?.toString() ?: "") to files
     }
 }
 

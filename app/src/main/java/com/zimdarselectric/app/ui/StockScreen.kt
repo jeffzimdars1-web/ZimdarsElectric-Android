@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -196,6 +197,9 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
     var alertBoxes by remember { mutableStateOf(if (m.packSize > 1.0 && m.alertLevel > 0) qtyText(m.alertLevel / m.packSize) else "") }
     val packN = pack.toNum()
     val boxOn = boxed && packN > 1.0
+    val receiptItems by vm.receiptItems.collectAsState()
+    var pickReceipt by remember { mutableStateOf(false) }
+    var receiptSearch by remember { mutableStateOf("") }
     val materials by vm.materials.collectAsState()
 
     /** Fills only the boxes that are still empty, so nothing you typed gets replaced. */
@@ -229,6 +233,33 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
     }
 
     if (viewing && photo.isNotBlank()) { PhotoViewer(photo, name.ifBlank { "Item" }) { viewing = false } }
+    if (pickReceipt) {
+        val found = com.zimdarselectric.app.data.ReceiptItem.search(receiptItems, receiptSearch).take(30)
+        val day = java.text.SimpleDateFormat("MMM d", java.util.Locale.US)
+        ZDialog("Price from my receipts", { pickReceipt = false }, confirm = "Close" to { pickReceipt = false }) {
+            Field("Search your receipts", receiptSearch, { receiptSearch = it })
+            Spacer(Modifier.height(6.dp))
+            if (receiptItems.isEmpty()) Text("No receipt lines yet. Import your receipts file in Books first.", color = Z.muted, fontSize = 13.sp)
+            else if (found.isEmpty()) Text("Nothing matches. Try one word, like \"twister\" or \"staples\".", color = Z.muted, fontSize = 13.sp)
+            LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                items(found) { r ->
+                    val packs = r.packCount
+                    Column(Modifier.fillMaxWidth().clickable {
+                        when {
+                            packs != null && packs > 1 -> { boxed = true; pack = packs.toString(); boxPrice = qtyText(r.paidEach) }
+                            boxed -> boxPrice = qtyText(r.paidEach)
+                            else -> cost = qtyText(r.paidEach)
+                        }
+                        pickReceipt = false
+                    }.padding(vertical = 10.dp)) {
+                        Text(r.name, color = Z.text, fontSize = 15.sp)
+                        Label("${r.store} · ${day.format(java.util.Date(r.date))} · ${money(r.paidEach)} with tax" + (if (r.qty > 1) " each" else "") + (packs?.takeIf { it > 1 }?.let { " · box of $it" } ?: ""))
+                    }
+                    Divider()
+                }
+            }
+        }
+    }
     ZDialog(if (isNew) "Add to stock" else "Edit stock item", cancel,
         confirm = "Save" to {
             if (name.isNotBlank()) {
@@ -300,6 +331,11 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
                 if (boxed) {
                     Field("How many in a box (${unit.ifBlank { "ea" }})", pack, { pack = it }, number = true)
                     if (packN <= 1.0) Text("Enter how many come in one box, like 100.", color = Z.muted, fontSize = 12.sp)
+                }
+                if (receiptItems.isNotEmpty()) {
+                    Label("Price from my receipts →", color = Z.neon, modifier = Modifier.clickable {
+                        receiptSearch = listOf(name, spec).filter { it.isNotBlank() }.joinToString(" "); pickReceipt = true
+                    }.padding(vertical = 8.dp))
                 }
                 Spacer(Modifier.height(6.dp))
                 if (boxOn) {
