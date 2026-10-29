@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zimdarselectric.app.AppViewModel
 import com.zimdarselectric.app.data.Catalog
+import com.zimdarselectric.app.data.LabelGuess
 import com.zimdarselectric.app.data.Material
 import com.zimdarselectric.app.data.money
 import com.zimdarselectric.app.data.qtyText
@@ -39,6 +41,20 @@ fun StockScreen(vm: AppViewModel) {
     var filter by remember { mutableStateOf(0) }
     var search by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Material?>(null) }
+    var editPhoto by remember { mutableStateOf<String?>(null) }
+    var editGuess by remember { mutableStateOf<LabelGuess?>(null) }
+    fun edit(m: Material, photo: String? = null, guess: LabelGuess? = null) { editPhoto = photo; editGuess = guess; editing = m }
+
+    // Scan: a box you already have opens that item; anything else starts a new item filled in from the label.
+    val scanner = rememberLabelScanner(vm) { f, g ->
+        val known = g.barcodes.firstNotNullOfOrNull { code -> materials.firstOrNull { it.hasBarcode(code) } }
+            ?: g.matches.firstOrNull()?.let { c -> materials.firstOrNull { it.name.equals(c.name, true) && (c.spec.isBlank() || it.spec.contains(c.spec, true)) } }
+        when {
+            known == null -> edit(Material(name = ""), f.path, g)
+            known.photoPath.isBlank() -> edit(known, f.path, g)
+            else -> { vm.discardItemPhoto(f.path); edit(known, null, g) }
+        }
+    }
 
     fun free(m: Material) = m.onHand - (holds[m.id] ?: 0.0)
     val low = materials.filter { free(it) < it.alertLevel || free(it) < 0 }
@@ -53,7 +69,10 @@ fun StockScreen(vm: AppViewModel) {
                 Title("Stock", 38)
                 Label("${materials.size} items · ${low.size} low", color = if (low.isNotEmpty()) Z.warn else Z.muted)
             }
-            Box(Modifier.width(110.dp)) { NeonButton("+ Add", Modifier.fillMaxWidth()) { editing = Material(name = "") } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.width(96.dp)) { GhostButton(if (scanner.busy) "Reading…" else "Scan", Modifier.fillMaxWidth().height(54.dp)) { if (!scanner.busy) scanner.launch() } }
+                Box(Modifier.width(96.dp)) { NeonButton("+ Add", Modifier.fillMaxWidth()) { edit(Material(name = "")) } }
+            }
         }
         Spacer(Modifier.height(12.dp))
         Field("Search (e.g. romex 12-2, 20A gfci)", search, { search = it })
@@ -63,7 +82,7 @@ fun StockScreen(vm: AppViewModel) {
                 Spacer(Modifier.height(6.dp))
                 Label("Not in your stock yet · tap to add", color = Z.neon)
                 SuggestionList(sugg.map { it.name to listOf(it.spec, it.category, "per ${it.unit}").filter { x -> x.isNotBlank() }.joinToString(" · ") }) { i ->
-                    editing = Material(name = sugg[i].name, unit = sugg[i].unit, spec = sugg[i].spec)
+                    edit(Material(name = sugg[i].name, unit = sugg[i].unit, spec = sugg[i].spec))
                     search = ""
                 }
             }
@@ -79,19 +98,19 @@ fun StockScreen(vm: AppViewModel) {
                 items(low, key = { "o${it.id}" }) { m ->
                     val f = free(m)
                     val buy = maxOf(m.alertLevel - f, -f, 0.0)
-                    ListRow(m.name, "Buy ${qtyText(buy)} ${m.unit} · about ${money(buy * m.cost)}".uppercase(), onClick = { editing = m }) { StatusDot("Low", Z.warn) }
+                    ListRow(m.name, "Buy ${qtyText(buy)} ${m.unit} · about ${money(buy * m.cost)}".uppercase(), onClick = { edit(m) }) { StatusDot("Low", Z.warn) }
                 }
                 item { SectionHeader("01", "Everything") }
             }
             if (shown.isEmpty()) item {
                 Text(if (materials.isEmpty()) "Nothing in stock yet. Tap + Add, or add items from a quote." else "No match.", color = Z.muted, modifier = Modifier.padding(vertical = 14.dp))
             }
-            items(shown, key = { it.id }) { m -> StockRow(m, holds[m.id] ?: 0.0) { editing = m } }
+            items(shown, key = { it.id }) { m -> StockRow(m, holds[m.id] ?: 0.0) { edit(m) } }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
 
-    editing?.let { m -> MaterialDialog(vm, m) { editing = null } }
+    editing?.let { m -> MaterialDialog(vm, m, initialPhoto = editPhoto ?: m.photoPath, initialGuess = editGuess) { editing = null } }
 }
 
 @Composable
@@ -141,7 +160,7 @@ private fun Num(label: String, value: String, color: androidx.compose.ui.graphic
 }
 
 @Composable
-fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
+fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photoPath, initialGuess: LabelGuess? = null, onClose: () -> Unit) {
     val isNew = m.id == 0L
     var name by remember { mutableStateOf(m.name) }
     var spec by remember { mutableStateOf(m.spec) }
@@ -154,19 +173,30 @@ fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
     var used by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
     var nameLocked by remember { mutableStateOf(m.name.isNotBlank()) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var photo by remember { mutableStateOf(m.photoPath) }
-    var pending by remember { mutableStateOf<java.io.File?>(null) }
+    var photo by remember { mutableStateOf(initialPhoto) }
     var viewing by remember { mutableStateOf(false) }
-    val camera = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
-        val f = pending; pending = null
-        if (ok && f != null) vm.shrinkItemPhoto(f) { good -> if (good) { if (photo != m.photoPath) vm.discardItemPhoto(photo); photo = f.path } }
-        else f?.delete()
+    var guess by remember { mutableStateOf(initialGuess) }
+    var codes by remember { mutableStateOf(m.barcodes) }
+    val materials by vm.materials.collectAsState()
+
+    /** Fills only the boxes that are still empty, so nothing you typed gets replaced. */
+    fun applyGuess(g: LabelGuess) {
+        guess = g
+        val top = g.matches.firstOrNull()
+        if (name.isBlank() && top != null) { name = top.name; nameLocked = true }
+        if (spec.isBlank()) spec = listOf(top?.spec ?: "", g.spec).filter { it.isNotBlank() }.joinToString(" · ")
+        if ((unit.isBlank() || unit == "ea") && g.unit != null && isNew) unit = g.unit!!
+        if (cost.isBlank()) g.unitCost?.let { cost = qtyText(it) }
+        if (g.barcodes.isNotEmpty()) codes = m.copy(barcodes = codes).withBarcodes(g.barcodes).barcodes
     }
-    fun snap() {
-        val f = vm.newItemPhotoFile(); pending = f
-        camera.launch(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f))
+    LaunchedEffect(Unit) { initialGuess?.let { applyGuess(it) } }
+
+    val scanner = rememberLabelScanner(vm) { f, g ->
+        if (photo != m.photoPath) vm.discardItemPhoto(photo)
+        photo = f.path
+        applyGuess(g)
     }
+    fun snap() = scanner.launch()
     /** Closing without saving throws away a photo taken in this dialog. */
     val cancel = { if (photo != m.photoPath) vm.discardItemPhoto(photo); onClose() }
 
@@ -182,7 +212,7 @@ fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
         confirm = "Save" to {
             if (name.isNotBlank()) {
                 val base = m.copy(name = name.trim(), spec = spec.trim(), unit = unit.trim().ifBlank { "ea" },
-                    alertLevel = alert.toNum(), cost = cost.toNum(), location = location.trim().ifBlank { "Truck" }, photoPath = photo)
+                    alertLevel = alert.toNum(), cost = cost.toNum(), location = location.trim().ifBlank { "Truck" }, photoPath = photo, barcodes = codes)
                 if (m.photoPath.isNotBlank() && m.photoPath != photo) vm.discardItemPhoto(m.photoPath)
                 if (isNew) vm.saveMaterial(base.copy(onHand = onHand.toNum()))
                 else {
@@ -204,8 +234,19 @@ fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Label(if (photo.isBlank()) "Snap photo" else "Retake photo", color = Z.neon, modifier = Modifier.clickable { snap() }.padding(vertical = 4.dp))
                         if (photo.isNotBlank()) Label("Remove photo", color = Z.warn, modifier = Modifier.clickable { photo = "" }.padding(vertical = 4.dp))
-                        else Text("Your own photo of the item, so you know it at a glance.", color = Z.muted, fontSize = 12.sp)
+                        else Text("Snap the label or box. The app reads it and fills in what it can.", color = Z.muted, fontSize = 12.sp)
                     }
+                }
+                if (scanner.busy) { Spacer(Modifier.height(8.dp)); Label("Reading label…", color = Z.neon) }
+                guess?.let { g ->
+                    Spacer(Modifier.height(8.dp))
+                    LabelResult(g) { c ->
+                        name = c.name; nameLocked = true
+                        if (isNew) unit = g.unit ?: c.unit
+                        spec = listOf(c.spec, g.spec).filter { it.isNotBlank() }.joinToString(" · ")
+                    }
+                    val other = g.barcodes.firstNotNullOfOrNull { code -> materials.firstOrNull { it.id != m.id && it.hasBarcode(code) } }
+                    if (other != null) Text("This barcode is already on \"${other.name}\" in your stock.", color = Z.warn, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(10.dp))
                 Field("Name (e.g. 12/2 NM-B)", name, { name = it; nameLocked = false })

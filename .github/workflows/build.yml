@@ -28,7 +28,7 @@ jobs:
           gradle-version: "8.14.3"
 
       - name: Build
-        run: gradle :app:assembleDebug --stacktrace --no-daemon
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
 
       - name: Publish release
         env:

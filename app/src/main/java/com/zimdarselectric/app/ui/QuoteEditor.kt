@@ -244,7 +244,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit) {
     }
 
     if (addMaterial) MaterialPicker(
-        materials = materials, holdsOthers = holdsOthers, thisQuote = lines,
+        vm = vm, materials = materials, holdsOthers = holdsOthers, thisQuote = lines,
         onDismiss = { addMaterial = false },
         onNewMaterial = { m, qty -> vm.saveMaterial(m) { id -> vm.addLine(QuoteLine(quoteId = q.id, materialId = id, name = m.name, unit = m.unit, qty = qty, unitCost = m.cost)) }; addMaterial = false },
     ) { m, qty ->
@@ -338,6 +338,7 @@ fun CustomerPicker(customers: List<Customer>, onDismiss: () -> Unit, onNew: (Cus
 
 @Composable
 fun MaterialPicker(
+    vm: AppViewModel,
     materials: List<Material>,
     holdsOthers: Map<Long, Double>,
     thisQuote: List<QuoteLine>,
@@ -357,13 +358,40 @@ fun MaterialPicker(
     var nCost by remember { mutableStateOf("") }
     var nSpec by remember { mutableStateOf("") }
     var nameLocked by remember { mutableStateOf(false) }
+    var nPhoto by remember { mutableStateOf("") }
+    var nCodes by remember { mutableStateOf("") }
+    var nGuess by remember { mutableStateOf<com.zimdarselectric.app.data.LabelGuess?>(null) }
+    val dropPhoto = { if (nPhoto.isNotBlank()) vm.discardItemPhoto(nPhoto); nPhoto = ""; nGuess = null; nCodes = "" }
+
+    // Scan a box: if it's already in stock, pick it; otherwise start a new item filled in from the label.
+    val scanner = rememberLabelScanner(vm) { f, g ->
+        val known = g.barcodes.firstNotNullOfOrNull { code -> materials.firstOrNull { it.hasBarcode(code) } }
+        if (known != null) {
+            if (known.photoPath.isBlank()) vm.saveMaterial(known.copy(photoPath = f.path)) else vm.discardItemPhoto(f.path)
+            chosen = known; qty = "1"
+        } else {
+            dropPhoto()
+            val top = g.matches.firstOrNull()
+            nName = top?.name ?: ""; nameLocked = top != null
+            nUnit = g.unit ?: "ea"
+            nSpec = listOf(top?.spec ?: "", g.spec).filter { it.isNotBlank() }.joinToString(" · ")
+            nCost = g.unitCost?.let { qtyText(it) } ?: ""
+            nPhoto = f.path; nGuess = g; nCodes = g.barcodes.joinToString(",")
+            creating = true
+        }
+    }
 
     when {
-        creating -> ZDialog("New material", onDismiss,
+        creating -> ZDialog("New material", { dropPhoto(); onDismiss() },
             confirm = "Add to quote" to {
-                if (nName.isNotBlank()) onNewMaterial(Material(name = nName.trim(), spec = nSpec.trim(), unit = nUnit.trim().ifBlank { "ea" }, cost = nCost.toNum()), qty.toNum().takeIf { it > 0 } ?: 1.0)
+                if (nName.isNotBlank()) onNewMaterial(Material(name = nName.trim(), spec = nSpec.trim(), unit = nUnit.trim().ifBlank { "ea" }, cost = nCost.toNum(), photoPath = nPhoto, barcodes = nCodes), qty.toNum().takeIf { it > 0 } ?: 1.0)
             },
-            dismiss = "Back" to { creating = false }) {
+            dismiss = "Back" to { dropPhoto(); creating = false }) {
+            if (nPhoto.isNotBlank()) { ItemThumb(nPhoto, 84.dp); Spacer(Modifier.height(8.dp)) }
+            nGuess?.let { g ->
+                LabelResult(g) { c -> nName = c.name; nameLocked = true; nUnit = g.unit ?: c.unit; nSpec = listOf(c.spec, g.spec).filter { it.isNotBlank() }.joinToString(" · ") }
+                Spacer(Modifier.height(8.dp))
+            }
             Field("Name (e.g. 12/2 NM-B cable)", nName, { nName = it; nameLocked = false })
             if (!nameLocked && nName.trim().length >= 2) {
                 val sugg = Catalog.search(nName, 5).filter { !it.name.equals(nName.trim(), true) }
@@ -417,6 +445,8 @@ fun MaterialPicker(
 
         else -> ZDialog("Add material", onDismiss, confirm = "+ New item" to { nName = search; creating = true }, dismiss = "Cancel" to onDismiss) {
             Field("Search (e.g. romex 12-2, 20A gfci)", search, { search = it })
+            Spacer(Modifier.height(6.dp))
+            GhostButton(if (scanner.busy) "Reading label…" else "Scan box or label", Modifier.fillMaxWidth().height(48.dp)) { if (!scanner.busy) scanner.launch() }
             Spacer(Modifier.height(8.dp))
             val shown = materials.filter { search.isBlank() || Catalog.matchesText(it.name + " " + it.spec, search) }
             val fromCatalog = if (search.trim().length >= 2)

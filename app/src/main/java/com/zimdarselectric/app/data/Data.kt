@@ -61,7 +61,12 @@ data class Material(
     val location: String = "Truck",
     /** Your own photo of the item, stored on the phone. Blank = no photo yet. */
     @ColumnInfo(defaultValue = "") val photoPath: String = "",
-)
+    /** Barcodes (UPC) scanned for this item, comma-separated. */
+    @ColumnInfo(defaultValue = "") val barcodes: String = "",
+) {
+    fun hasBarcode(code: String) = code.isNotBlank() && barcodes.split(',').any { it == code }
+    fun withBarcodes(codes: List<String>) = copy(barcodes = (barcodes.split(',') + codes).map { it.trim() }.filter { it.isNotBlank() }.distinct().joinToString(","))
+}
 
 @Entity
 data class Quote(
@@ -264,9 +269,16 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/** Version 4 remembers barcodes for each stock item. */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Material` ADD COLUMN `barcodes` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -276,7 +288,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build().also { instance = it }
         }
     }
