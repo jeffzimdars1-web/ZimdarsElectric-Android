@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Quote to sign</title>
+<style>
+  :root {
+    --ink: #1c1f21; --muted: #5d656b; --line: #d9dde0; --paper: #ffffff; --wash: #f3f4f5;
+    --band: #1c1f21; --neon: #dcff34; --ok: #2e8f5b; --warn: #c2410c;
+    --cond: "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--wash); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .sheet { max-width: 760px; margin: 0 auto; background: var(--paper); min-height: 100vh; }
+  header { background: var(--band); color: #f2f3f3; padding: 22px 20px 18px; border-bottom: 4px solid var(--neon); }
+  header h1 { margin: 0; font: 700 26px/1.1 var(--cond); letter-spacing: .5px; text-transform: uppercase; }
+  header .contact { margin-top: 6px; font-size: 13px; color: #c9cdd0; }
+  header .contact a { color: #c9cdd0; }
+  main { padding: 6px 20px 40px; }
+  .kicker { font: 600 11px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+  h2 { font: 700 15px/1.2 var(--cond); text-transform: uppercase; letter-spacing: 1px; margin: 26px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .qnum { font: 700 30px/1 var(--cond); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+  .muted { color: var(--muted); }
+  .scope { white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th { text-align: left; font: 600 11px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 8px 6px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 6px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.n, th.n { text-align: right; padding-right: 0; padding-left: 12px; white-space: nowrap; }
+  .totals { margin-left: auto; max-width: 340px; }
+  .totals div { display: flex; justify-content: space-between; padding: 5px 0; }
+  .totals .grand { border-top: 2px solid var(--ink); margin-top: 6px; padding-top: 10px; font: 700 24px/1 var(--cond); }
+  .note { background: var(--wash); border-left: 3px solid var(--ink); padding: 10px 12px; font-size: 14px; margin: 10px 0; }
+  .notices { font-size: 13.5px; color: #333a3f; }
+  .notices p { margin: 0 0 8px; }
+  .signbox { margin-top: 28px; border: 2px solid var(--ink); padding: 16px; }
+  label.field { display: block; font-size: 14px; margin: 12px 0 4px; font-weight: 600; }
+  input[type=text] { width: 100%; font-size: 18px; padding: 12px; border: 1px solid #9aa2a8; border-radius: 0; }
+  .agree { display: flex; gap: 12px; align-items: flex-start; margin: 16px 0 6px; font-size: 15px; }
+  .agree input { width: 26px; height: 26px; flex: none; margin-top: 2px; accent-color: var(--ink); }
+  .pad-wrap { position: relative; margin-top: 6px; }
+  canvas#pad { width: 100%; height: 190px; background: #fbfbfb; border: 1px dashed #8a9399; touch-action: none; display: block; }
+  .pad-line { position: absolute; left: 16px; right: 16px; bottom: 44px; border-bottom: 1px solid #b9c0c5; pointer-events: none; }
+  .pad-x { position: absolute; left: 16px; bottom: 48px; color: #8a9399; font: 700 18px var(--cond); pointer-events: none; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; }
+  button { font: 700 16px var(--cond); text-transform: uppercase; letter-spacing: 1px; border: 0; cursor: pointer; }
+  .btn { background: var(--ink); color: var(--neon); padding: 16px 20px; width: 100%; margin-top: 16px; }
+  .btn[disabled] { opacity: .45; cursor: default; }
+  .link { background: none; color: var(--ink); text-decoration: underline; padding: 6px 0; font-size: 14px; }
+  .err { color: var(--warn); font-weight: 600; margin-top: 10px; min-height: 1em; }
+  .signed { border: 2px solid var(--ok); padding: 16px; margin-top: 28px; }
+  .signed .badge { color: var(--ok); font: 700 20px var(--cond); text-transform: uppercase; }
+  .signed img { max-width: 320px; width: 100%; display: block; margin: 8px 0; border-bottom: 1px solid var(--ink); }
+  .center { padding: 60px 20px; text-align: center; }
+  .print { margin-top: 14px; }
+  @media print {
+    body { background: #fff; }
+    header { background: #fff; color: #000; border-bottom: 2px solid #000; }
+    header .contact, header .contact a { color: #000; }
+    .noprint { display: none !important; }
+    h2 { break-after: avoid; }
+    tr, .signed, .note { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div id="app"><div class="center muted">Loading your quote…</div></div>
+</div>
+<script>
+(function () {
+  "use strict";
+  var API = "https://dmaslbfwpsfnnnyushbc.supabase.co/functions/v1/sign";
+  var token = new URLSearchParams(location.search).get("t") || "";
+  var app = document.getElementById("app");
+
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "cls") e.className = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function money(v) { return (Number(v) || 0).toLocaleString("en-US", { style: "currency", currency: "USD" }); }
+  function qty(v) { v = Number(v) || 0; return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100); }
+  function day(ms) { return ms ? new Date(ms).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : ""; }
+  function stamp(iso) { return new Date(iso).toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" }); }
+  function message(title, body) {
+    app.innerHTML = "";
+    app.appendChild(el("div", { cls: "center" }, [el("h2", { text: title }), el("p", { cls: "muted", text: body })]));
+  }
+
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) { message("Link not valid", "Please use the full link from your text or email."); return; }
+
+  fetch(API + "?t=" + encodeURIComponent(token), { cache: "no-store" })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok) { message("Quote not found", "This link may be wrong or the quote was removed. Please contact the contractor."); return; }
+      render(res.j);
+    })
+    .catch(function () { message("Can't load the quote", "Check your connection and open the link again."); });
+
+  function render(d) {
+    var p = d.payload || {}, b = p.business || {}, c = p.customer || {}, q = p.quote || {}, t = p.totals || {}, terms = p.terms || {};
+    document.title = (b.name || "Quote") + " · " + (q.number || d.quote_number);
+    app.innerHTML = "";
+
+    var contact = [b.phone, b.email, b.address].filter(Boolean).join(" · ");
+    var lic = [b.license ? "License " + b.license : "", b.insurer ? "Insured: " + b.insurer : ""].filter(Boolean).join(" · ");
+    app.appendChild(el("header", null, [
+      el("h1", { text: b.name || "Quote" }),
+      el("div", { cls: "contact", text: contact }),
+      lic ? el("div", { cls: "contact", text: lic }) : null,
+    ]));
+
+    var m = el("main");
+    app.appendChild(m);
+
+    m.appendChild(el("div", { cls: "title-row" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "Quote" }), el("div", { cls: "qnum", text: q.number || d.quote_number })]),
+      el("div", { cls: "muted", style: "text-align:right;font-size:14px" }, [
+        el("div", { text: "Date: " + day(q.date) }),
+        q.validUntil ? el("div", { text: "Good until: " + day(q.validUntil) }) : null,
+      ]),
+    ]));
+    if (d.status === "canceled") {
+      m.appendChild(el("div", { cls: "note", text: "This quote was replaced or canceled, so it can't be signed. Please contact " + (b.name || "the contractor") + (b.phone ? " at " + b.phone : "") + "." }));
+    }
+
+    m.appendChild(el("h2", { text: "Customer and job" }));
+    m.appendChild(el("div", { cls: "grid" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "Customer" }), el("div", { text: c.name || "" }),
+        c.phone ? el("div", { cls: "muted", text: c.phone }) : null, c.email ? el("div", { cls: "muted", text: c.email }) : null]),
+      el("div", null, [el("div", { cls: "kicker", text: "Job site" }), el("div", { text: q.site || c.address || "" })]),
+      el("div", null, [el("div", { cls: "kicker", text: "Type of work" }),
+        el("div", { text: q.jobType === "REPAIR" ? "Repair / maintenance" : "New installation (capital improvement)" })]),
+      el("div", null, [el("div", { cls: "kicker", text: "Planned dates" }), el("div", { text: q.scheduled || "To be scheduled together" })]),
+    ]));
+    if (q.title || q.notes) {
+      m.appendChild(el("h2", { text: "Work to be done" }));
+      if (q.title) m.appendChild(el("p", { style: "font-weight:600;margin:4px 0", text: q.title }));
+      if (q.notes) m.appendChild(el("p", { cls: "scope", text: q.notes }));
+    }
+
+    var lines = p.lines || [];
+    if (lines.length) {
+      m.appendChild(el("h2", { text: "Materials" }));
+      var tb = el("tbody");
+      lines.forEach(function (l) {
+        tb.appendChild(el("tr", null, [
+          el("td", { text: l.name }), el("td", { cls: "n", text: qty(l.qty) + " " + (l.unit || "") }),
+          el("td", { cls: "n", text: money(l.price) }), el("td", { cls: "n", text: money(l.total) }),
+        ]));
+      });
+      m.appendChild(el("table", null, [el("thead", null, [el("tr", null, [
+        el("th", { text: "Item" }), el("th", { cls: "n", text: "Qty" }), el("th", { cls: "n", text: "Each" }), el("th", { cls: "n", text: "Amount" }),
+      ])]), tb]));
+    }
+
+    m.appendChild(el("h2", { text: "Price" }));
+    var tot = el("div", { cls: "totals" });
+    function trow(k, v, cls) { tot.appendChild(el("div", cls ? { cls: cls } : null, [el("span", { text: k }), el("span", { text: v })])); }
+    trow("Materials", money(t.materials));
+    var lab = p.labor || {};
+    trow(lab.hours ? "Labor (" + qty(lab.hours) + " hr)" : "Labor", money(t.labor));
+    if (q.jobType === "REPAIR") trow("Sales tax (" + qty(t.taxRate) + "%)", money(t.tax));
+    trow("Total", money(t.total), "grand");
+    m.appendChild(tot);
+    if (q.jobType !== "REPAIR") {
+      m.appendChild(el("div", { cls: "note", text: "No sales tax: this is a capital improvement to your property. You'll be asked to sign New York State form ST-124 (Certificate of Capital Improvement) to confirm this." }));
+    }
+
+    m.appendChild(el("h2", { text: "Terms" }));
+    if (terms.payment) m.appendChild(el("p", null, [el("b", { text: "Payment: " }), terms.payment]));
+    if (terms.warranty) m.appendChild(el("p", null, [el("b", { text: "Warranty: " }), terms.warranty]));
+    var notices = el("div", { cls: "notices" });
+    (p.notices || []).forEach(function (n) { notices.appendChild(el("p", { text: n })); });
+    m.appendChild(notices);
+
+    if (d.status === "signed") { m.appendChild(signedBlock(d.signer_name, d.signed_at, d.signature_png, b)); return; }
+    if (d.status !== "sent") return;
+    m.appendChild(signBlock(d, b));
+  }
+
+  function signedBlock(name, at, png, b) {
+    return el("div", { cls: "signed" }, [
+      el("div", { cls: "badge", text: "✓ Signed" }),
+      png ? el("img", { src: png, alt: "Signature of " + name }) : null,
+      el("div", { text: name }),
+      el("div", { cls: "muted", text: "Signed electronically " + stamp(at) }),
+      el("p", { cls: "muted noprint", style: "font-size:14px", text: "Thank you! " + (b.name || "Your contractor") + " has been notified. Keep a copy for your records:" }),
+      el("button", { cls: "btn noprint print", type: "button", text: "Save or print a copy" }),
+    ]);
+  }
+
+  function signBlock(d, b) {
+    var box = el("div", { cls: "signbox noprint" });
+    box.appendChild(el("div", { cls: "kicker", text: "To approve, sign below" }));
+    box.appendChild(el("label", { cls: "field", "for": "nm", text: "Your full name" }));
+    var name = el("input", { id: "nm", type: "text", autocomplete: "name", maxlength: "100" });
+    box.appendChild(name);
+    var chk = el("input", { type: "checkbox", id: "ag" });
+    box.appendChild(el("label", { cls: "agree", "for": "ag" }, [chk, el("span", { text: d.agree_text })]));
+    box.appendChild(el("label", { cls: "field", text: "Sign with your finger" }));
+    var canvas = el("canvas", { id: "pad", "aria-label": "Signature pad" });
+    box.appendChild(el("div", { cls: "pad-wrap" }, [canvas, el("div", { cls: "pad-line" }), el("div", { cls: "pad-x", text: "×" })]));
+    var clear = el("button", { cls: "link", type: "button", text: "Clear signature" });
+    box.appendChild(el("div", { cls: "row" }, [el("span", { cls: "muted", style: "font-size:13px", text: "Signing as the owner or someone allowed to approve this work." }), clear]));
+    var err = el("div", { cls: "err", role: "alert" });
+    var btn = el("button", { cls: "btn", type: "button", text: "Sign and approve" });
+    box.appendChild(btn); box.appendChild(err);
+
+    // Signature pad
+    var ctx, drawn = false, last = null;
+    function size() {
+      var r = canvas.getBoundingClientRect(), s = window.devicePixelRatio || 1;
+      var keep = drawn ? canvas.toDataURL() : null;
+      canvas.width = Math.round(r.width * s); canvas.height = Math.round(r.height * s);
+      ctx = canvas.getContext("2d"); ctx.scale(s, s);
+      ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#111";
+      if (keep) { var im = new Image(); im.onload = function () { ctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = keep; }
+    }
+    function pos(e) { var r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+    canvas.addEventListener("pointerdown", function (e) { e.preventDefault(); canvas.setPointerCapture(e.pointerId); last = pos(e); ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, 7); ctx.fillStyle = "#111"; ctx.fill(); drawn = true; });
+    canvas.addEventListener("pointermove", function (e) {
+      if (!last) return; e.preventDefault(); var p = pos(e);
+      ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; drawn = true;
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(function (ev) { canvas.addEventListener(ev, function () { last = null; }); });
+    clear.addEventListener("click", function () { drawn = false; ctx.clearRect(0, 0, canvas.width, canvas.height); });
+    setTimeout(size, 0);
+    window.addEventListener("resize", function () { if (!last) size(); });
+
+    // Signature as a small, trimmed PNG
+    function signaturePng() {
+      var w = canvas.width, h = canvas.height, data = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+      var minX = w, minY = h, maxX = -1, maxY = -1;
+      for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > 0) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+      if (maxX < 0) return null;
+      var pad = 8; minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad); maxX = Math.min(w - 1, maxX + pad); maxY = Math.min(h - 1, maxY + pad);
+      var cw = maxX - minX + 1, ch = maxY - minY + 1, scale = Math.min(1, 600 / cw);
+      var out = document.createElement("canvas"); out.width = Math.round(cw * scale); out.height = Math.round(ch * scale);
+      out.getContext("2d").drawImage(canvas, minX, minY, cw, ch, 0, 0, out.width, out.height);
+      return out.toDataURL("image/png");
+    }
+
+    btn.addEventListener("click", function () {
+      err.textContent = "";
+      var n = name.value.trim();
+      if (n.length < 2) { err.textContent = "Please type your full name."; name.focus(); return; }
+      if (!chk.checked) { err.textContent = "Please check the box to agree."; return; }
+      var sig = drawn ? signaturePng() : null;
+      if (!sig) { err.textContent = "Please sign in the box with your finger."; return; }
+      btn.disabled = true; btn.textContent = "Signing…";
+      fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", t: token, name: n, agree: true, signature: sig }) })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (res.ok) { box.replaceWith(signedBlock(n, res.j.signed_at, sig, b)); wirePrint(); window.scrollTo(0, document.body.scrollHeight); return; }
+          if (res.j.error === "already_signed") { location.reload(); return; }
+          if (res.j.error === "canceled") { err.textContent = "This quote was replaced or canceled. Please contact the contractor."; return; }
+          throw new Error();
+        })
+        .catch(function () { err.textContent = "Couldn't send. Check your connection and tap Sign again."; })
+        .finally(function () { if (btn.isConnected) { btn.disabled = false; btn.textContent = "Sign and approve"; } });
+    });
+    return box;
+  }
+
+  function wirePrint() {
+    document.querySelectorAll(".print").forEach(function (b) { b.onclick = function () { window.print(); }; });
+  }
+  new MutationObserver(wirePrint).observe(app, { childList: true, subtree: true });
+})();
+</script>
+</body>
+</html>
