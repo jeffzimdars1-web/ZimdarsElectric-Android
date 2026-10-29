@@ -10,6 +10,8 @@ import com.zimdarselectric.app.data.Expense
 import com.zimdarselectric.app.data.Material
 import com.zimdarselectric.app.data.Quote
 import com.zimdarselectric.app.data.QuoteLine
+import com.zimdarselectric.app.data.QuotePdf
+import com.zimdarselectric.app.data.SignService
 import com.zimdarselectric.app.data.Settings
 import com.zimdarselectric.app.data.Status
 import com.zimdarselectric.app.data.StockMove
@@ -42,6 +44,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch { if (dao.settingsNow() == null) dao.saveSettings(Settings()) }
+        // While the app is open, check for customer signatures every 20 seconds (only if a quote is waiting).
+        viewModelScope.launch {
+            while (true) {
+                if (quotes.value.any { it.awaitingSignature }) {
+                    runCatching { SignService.notifySigned(app, SignService.sync(app)) }
+                    kotlinx.coroutines.delay(20_000)
+                } else kotlinx.coroutines.delay(5_000)
+            }
+        }
+        runCatching { SignService.scheduleBackgroundCheck(app) }
+    }
+
+    // ---------- Customer signatures ----------
+    private fun friendly(e: Exception) = (e as? SignService.SignException)?.message
+        ?: "Couldn't reach the signing service. Check your signal and try again."
+
+    /** Creates (or replaces) the signing link for a quote. Draft quotes become Sent. */
+    fun sendForSignature(q: Quote, onDone: (url: String?, error: String?) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        if (s.signKey.isBlank()) { onDone(null, "Add your signing key in Settings first."); return@launch }
+        val current = dao.quote(q.id) ?: return@launch
+        val lines = dao.linesFor(q.id)
+        val customer = current.customerId?.let { dao.customer(it) }
+        try {
+            val link = SignService.create(s.signKey.trim(), SignService.payload(current, lines, customer, s), current.number,
+                current.signToken.takeIf { current.signedAt == null })
+            val now = System.currentTimeMillis()
+            val latest = dao.quote(q.id) ?: return@launch
+            // Sending again after a signature starts a fresh approval.
+            if (latest.signaturePath.isNotBlank()) java.io.File(latest.signaturePath).delete()
+            val resign = latest.signedAt != null
+            dao.updateQuote(latest.copy(signToken = link.token, signUrl = link.url, sentAt = now, updatedAt = now, viewedAt = null,
+                signedAt = null, signerName = "", signerIp = "", signaturePath = "",
+                status = if (latest.status == Status.DRAFT || (resign && latest.status == Status.APPROVED)) Status.SENT else latest.status))
+            SignService.scheduleBackgroundCheck(app)
+            onDone(link.url, null)
+        } catch (e: Exception) { onDone(null, friendly(e)) }
+    }
+
+    /** Turns off the link so it can't be signed anymore. */
+    fun cancelSignature(q: Quote, onDone: (String?) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        try {
+            if (q.signToken.isNotBlank() && s.signKey.isNotBlank()) SignService.cancel(s.signKey.trim(), q.signToken)
+            dao.quote(q.id)?.let { dao.updateQuote(it.copy(signToken = "", signUrl = "", sentAt = null, viewedAt = null)) }
+            onDone(null)
+        } catch (e: Exception) { onDone(friendly(e)) }
+    }
+
+    fun checkSignaturesNow(onDone: (signed: Int, error: String?) -> Unit) = viewModelScope.launch {
+        try {
+            val signed = SignService.sync(app)
+            SignService.notifySigned(app, signed)
+            onDone(signed.size, null)
+        } catch (e: Exception) { onDone(0, friendly(e)) }
+    }
+
+    /** Builds the customer PDF or your job copy and hands back the file. */
+    fun quotePdf(q: Quote, jobCopy: Boolean, onDone: (java.io.File?) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        val lines = dao.linesFor(q.id)
+        val customer = q.customerId?.let { dao.customer(it) }
+        val mats = materials.value
+        val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching { if (jobCopy) QuotePdf.jobCopy(app, q, lines, mats, customer, s) else QuotePdf.customerCopy(app, q, lines, customer, s) }.getOrNull()
+        }
+        onDone(f)
     }
 
     // ---------- Settings ----------

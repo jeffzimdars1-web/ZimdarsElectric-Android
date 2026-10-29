@@ -114,6 +114,8 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit) {
             TextFieldSaved("Job site address", q.site, "site${q.id}") { save(q.copy(site = it)) }
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("Planned day (e.g. Mon Nov 2)", q.scheduled, "sch${q.id}") { save(q.copy(scheduled = it)) }
+            Spacer(Modifier.height(8.dp))
+            TextFieldSaved("What you'll do (the customer sees this)", q.notes, "notes${q.id}", singleLine = false) { save(q.copy(notes = it)) }
 
             SectionHeader("02", "Job type · decides NY sales tax")
             Segmented(listOf("New install", "Repair"), if (q.jobType == JobType.REPAIR) 1 else 0) {
@@ -206,7 +208,12 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit) {
                 }
             }
 
-            SectionHeader("06", "Status")
+            SectionHeader("06", "Customer signature")
+            SignatureSection(vm, q, customers.firstOrNull { it.id == q.customerId }, settings)
+            Spacer(Modifier.height(12.dp))
+            QuotePdfButtons(vm, q)
+
+            SectionHeader("07", "Status")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(Status.DRAFT, Status.SENT, Status.APPROVED, Status.DECLINED).forEach { s ->
                     val sel = q.status == s

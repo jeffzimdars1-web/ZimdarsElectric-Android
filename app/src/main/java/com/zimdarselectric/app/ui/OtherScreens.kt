@@ -456,7 +456,13 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             TextFieldSaved("Payment terms", s.paymentTerms, "pt", singleLine = false) { save(s.copy(paymentTerms = it)) }; Gap()
             TextFieldSaved("Warranty", s.warranty, "wa", singleLine = false) { save(s.copy(warranty = it)) }
 
-            SectionHeader("07", "Quote numbers")
+            SectionHeader("07", "Customer signatures")
+            Text("Paste the signing key Claude gave you. It lets this phone create signing links; keep it private.", color = Z.muted, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            TextFieldSaved("Signing key", s.signKey, "sk") { save(s.copy(signKey = it.trim())) }
+            if (s.signKey.isNotBlank()) { Spacer(Modifier.height(4.dp)); StatusDot("Signing is set up", Z.ok) }
+
+            SectionHeader("08", "Quote numbers")
             NumField("Next quote number", s.nextQuoteNo.toDouble(), "nq") { save(s.copy(nextQuoteNo = it.toInt().coerceAtLeast(1))) }
             Spacer(Modifier.height(40.dp))
         }

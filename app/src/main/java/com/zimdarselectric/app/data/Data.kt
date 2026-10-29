@@ -90,7 +90,22 @@ data class Quote(
     val completedAt: Long? = null,
     val paidAmount: Double = 0.0,
     val paidAt: Long? = null,
-)
+    // Customer e-signature
+    /** Private token in the signing link. Blank = not sent for signature. */
+    @ColumnInfo(defaultValue = "") val signToken: String = "",
+    @ColumnInfo(defaultValue = "") val signUrl: String = "",
+    val sentAt: Long? = null,
+    val viewedAt: Long? = null,
+    val signedAt: Long? = null,
+    @ColumnInfo(defaultValue = "") val signerName: String = "",
+    @ColumnInfo(defaultValue = "") val signerIp: String = "",
+    /** The customer's signature image, stored on the phone. */
+    @ColumnInfo(defaultValue = "") val signaturePath: String = "",
+) {
+    val awaitingSignature: Boolean get() = signToken.isNotBlank() && signedAt == null
+    /** Edited after the link went out, so the customer is looking at an older version. */
+    val changedSinceSent: Boolean get() = sentAt != null && updatedAt > sentAt + 1500
+}
 
 @Entity
 data class QuoteLine(
@@ -157,6 +172,8 @@ data class Settings(
     val license: String = "",
     val insurer: String = "",
     val quoteValidDays: Int = 30,
+    /** Key that lets this phone create signing links. Kept only on the phone. */
+    @ColumnInfo(defaultValue = "") val signKey: String = "",
 )
 
 /** Schedule C expense categories, so receipts land on the right tax line. */
@@ -204,6 +221,12 @@ interface AppDao {
 
     @Query("SELECT * FROM Quote WHERE id = :id")
     suspend fun quote(id: Long): Quote?
+
+    @Query("SELECT * FROM Quote WHERE signToken != '' AND signedAt IS NULL")
+    suspend fun quotesAwaitingSignature(): List<Quote>
+
+    @Query("SELECT * FROM Customer WHERE id = :id")
+    suspend fun customer(id: Long): Customer?
 
     @Insert suspend fun insertQuote(q: Quote): Long
     @Update suspend fun updateQuote(q: Quote)
@@ -276,9 +299,20 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+/** Version 5 adds customer e-signatures. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf("signToken", "signUrl", "signerName", "signerIp", "signaturePath").forEach {
+            db.execSQL("ALTER TABLE `Quote` ADD COLUMN `$it` TEXT NOT NULL DEFAULT ''")
+        }
+        listOf("sentAt", "viewedAt", "signedAt").forEach { db.execSQL("ALTER TABLE `Quote` ADD COLUMN `$it` INTEGER") }
+        db.execSQL("ALTER TABLE `Settings` ADD COLUMN `signKey` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -288,7 +322,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build().also { instance = it }
         }
     }
