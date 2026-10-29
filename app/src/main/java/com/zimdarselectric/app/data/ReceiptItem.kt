@@ -19,6 +19,9 @@ data class ReceiptItem(
     /** Pieces per pack if the receipt name says so ("250PK", "100 pack"). */
     val packCount: Int? get() = LabelReader.read(name).packCount
 
+    /** Feet on a roll if the receipt name says so ("50-FT", "250 ft"). */
+    val feet: Int? get() = Regex("""(?i)(?<![\d/])(\d{2,4})\s*-?\s*(?:ft|feet)\b""").find(name)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 10..2500 }
+
     companion object {
         fun from(e: Expense): List<ReceiptItem> {
             if (e.items.isBlank()) return emptyList()

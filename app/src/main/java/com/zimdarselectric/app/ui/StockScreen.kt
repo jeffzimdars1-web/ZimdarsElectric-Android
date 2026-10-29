@@ -245,7 +245,9 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
                 items(found) { r ->
                     val packs = r.packCount
                     Column(Modifier.fillMaxWidth().clickable {
+                        val ft = r.feet
                         when {
+                            ft != null -> { boxed = false; unit = "ft"; cost = qtyText(Math.round(r.paidEach / ft * 1000) / 1000.0) }
                             packs != null && packs > 1 -> { boxed = true; pack = packs.toString(); boxPrice = qtyText(r.paidEach) }
                             boxed -> boxPrice = qtyText(r.paidEach)
                             else -> cost = qtyText(r.paidEach)
@@ -253,7 +255,7 @@ fun MaterialDialog(vm: AppViewModel, m: Material, initialPhoto: String = m.photo
                         pickReceipt = false
                     }.padding(vertical = 10.dp)) {
                         Text(r.name, color = Z.text, fontSize = 15.sp)
-                        Label("${r.store} · ${day.format(java.util.Date(r.date))} · ${money(r.paidEach)} with tax" + (if (r.qty > 1) " each" else "") + (packs?.takeIf { it > 1 }?.let { " · box of $it" } ?: ""))
+                        Label("${r.store} · ${day.format(java.util.Date(r.date))} · ${money(r.paidEach)} with tax" + (if (r.qty > 1) " each" else "") + (packs?.takeIf { it > 1 }?.let { " · box of $it" } ?: "") + (r.feet?.let { " · ${money(r.paidEach / it)}/ft" } ?: ""))
                     }
                     Divider()
                 }

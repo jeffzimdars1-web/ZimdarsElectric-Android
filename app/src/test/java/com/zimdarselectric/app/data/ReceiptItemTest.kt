@@ -15,6 +15,8 @@ class ReceiptItemTest {
         assertEquals(3, items.size)
         assertEquals(38.04, items[1].paidEach, 0.001)
         assertEquals(250, items[1].packCount)
+        assertEquals(50, ReceiptItem("14/2 CU NM-B W/G 50-FT", 1.0, 52.0, 56.55, "", "", "", 0, 0).feet)
+        assertEquals(null, items[0].feet)
     }
 
     @Test fun findsByEverydayNames() {
