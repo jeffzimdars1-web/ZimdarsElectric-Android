@@ -60,7 +60,7 @@ fun TextFieldSaved(label: String, value: String, key: Any, modifier: Modifier = 
 }
 
 @Composable
-fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit) {
+fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook: () -> Unit = {}) {
     val quotes by vm.quotes.collectAsState()
     val allLines by vm.lines.collectAsState()
     val materials by vm.materials.collectAsState()
@@ -160,7 +160,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit) {
                 GhostButton("+ Add material", Modifier.fillMaxWidth()) { addMaterial = true }
             }
 
-            SectionHeader("04", "Labor + pricing")
+            SectionHeader("04", "Labor + pricing", "Price book →") { onPriceBook() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 NumField("Hours", q.laborHours, "h${q.id}", Modifier.weight(1f)) { save(q.copy(laborHours = it)) }
                 NumField("Rate $/hr", q.laborRate, "r${q.id}", Modifier.weight(1f)) { save(q.copy(laborRate = it)) }

@@ -36,6 +36,7 @@ import com.zimdarselectric.app.ui.ExpenseDetailScreen
 import com.zimdarselectric.app.ui.HomeScreen
 import com.zimdarselectric.app.ui.Mono
 import com.zimdarselectric.app.ui.MoreScreen
+import com.zimdarselectric.app.ui.PriceBookScreen
 import com.zimdarselectric.app.ui.QuoteEditor
 import com.zimdarselectric.app.ui.QuotesScreen
 import com.zimdarselectric.app.ui.SettingsScreen
@@ -61,6 +62,7 @@ sealed interface Page {
     data object Tools : Page
     data object Settings : Page
     data class ExpenseDetail(val id: Long) : Page
+    data object PriceBook : Page
 }
 
 class Nav {
@@ -80,11 +82,12 @@ fun App(vm: AppViewModel = viewModel()) {
     Column(Modifier.fillMaxSize().background(Z.bg).statusBarsPadding().imePadding()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val top = nav.stack.lastOrNull()) {
-                is Page.EditQuote -> QuoteEditor(vm, top.id, onBack = { nav.back() })
+                is Page.EditQuote -> QuoteEditor(vm, top.id, onBack = { nav.back() }, onPriceBook = { nav.open(Page.PriceBook) })
                 Page.Customers -> CustomersScreen(vm, onBack = { nav.back() })
                 Page.Tools -> ToolsScreen(onBack = { nav.back() })
                 Page.Settings -> SettingsScreen(vm, onBack = { nav.back() })
                 is Page.ExpenseDetail -> ExpenseDetailScreen(vm, top.id, onBack = { nav.back() })
+                Page.PriceBook -> PriceBookScreen(vm, onBack = { nav.back() })
                 null -> when (nav.tab) {
                     Tab.HOME -> HomeScreen(vm, nav)
                     Tab.QUOTES -> QuotesScreen(vm, nav)

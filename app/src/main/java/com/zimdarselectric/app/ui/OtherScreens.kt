@@ -223,9 +223,10 @@ fun MoreScreen(nav: Nav) {
         Label("Everything else in one place")
         Spacer(Modifier.height(14.dp))
         Divider()
-        MoreRow("01", "Customers", "Call, text, directions, new quote") { nav.open(Page.Customers) }
-        MoreRow("02", "Tools + calculators", "Voltage drop · more coming") { nav.open(Page.Tools) }
-        MoreRow("03", "Settings", "Business info · rates · updates · v${Updater.currentVersion}") { nav.open(Page.Settings) }
+        MoreRow("01", "Price book", "What to charge · how to quote it") { nav.open(Page.PriceBook) }
+        MoreRow("02", "Customers", "Call, text, directions, new quote") { nav.open(Page.Customers) }
+        MoreRow("03", "Tools + calculators", "Voltage drop · more coming") { nav.open(Page.Tools) }
+        MoreRow("04", "Settings", "Business info · rates · updates · v${Updater.currentVersion}") { nav.open(Page.Settings) }
     }
 }
 
