@@ -1,0 +1,197 @@
+package com.zimdarselectric.app.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.zimdarselectric.app.AppViewModel
+import com.zimdarselectric.app.data.Material
+import com.zimdarselectric.app.data.money
+import com.zimdarselectric.app.data.qtyText
+import com.zimdarselectric.app.data.toNum
+
+@Composable
+fun StockScreen(vm: AppViewModel) {
+    val materials by vm.materials.collectAsState()
+    val holds by vm.holds.collectAsState()
+    var filter by remember { mutableStateOf(0) }
+    var search by remember { mutableStateOf("") }
+    var editing by remember { mutableStateOf<Material?>(null) }
+
+    fun free(m: Material) = m.onHand - (holds[m.id] ?: 0.0)
+    val low = materials.filter { free(it) < it.alertLevel || free(it) < 0 }
+    val held = materials.filter { (holds[it.id] ?: 0.0) > 0 }
+    val shown = when (filter) { 1 -> low; 2 -> held; else -> materials }
+        .filter { search.isBlank() || it.name.contains(search, true) || it.spec.contains(search, true) }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
+        Spacer(Modifier.height(22.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Title("Stock", 38)
+                Label("${materials.size} items · ${low.size} low", color = if (low.isNotEmpty()) Z.warn else Z.muted)
+            }
+            Box(Modifier.width(110.dp)) { NeonButton("+ Add", Modifier.fillMaxWidth()) { editing = Material(name = "") } }
+        }
+        Spacer(Modifier.height(12.dp))
+        Field("Search your stock", search, { search = it })
+        Spacer(Modifier.height(10.dp))
+        Segmented(listOf("All ${materials.size}", "Low ${low.size}", "On hold ${held.size}"), filter) { filter = it }
+        Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Legend("On hold", Z.info); Legend("Free", Z.ok)
+        }
+        LazyColumn(Modifier.weight(1f)) {
+            if (low.isNotEmpty() && filter == 0 && search.isBlank()) {
+                item { SectionHeader("!", "Order list") }
+                items(low, key = { "o${it.id}" }) { m ->
+                    val f = free(m)
+                    val buy = maxOf(m.alertLevel - f, -f, 0.0)
+                    ListRow(m.name, "Buy ${qtyText(buy)} ${m.unit} · about ${money(buy * m.cost)}".uppercase(), onClick = { editing = m }) { StatusDot("Low", Z.warn) }
+                }
+                item { SectionHeader("01", "Everything") }
+            }
+            if (shown.isEmpty()) item {
+                Text(if (materials.isEmpty()) "Nothing in stock yet. Tap + Add, or add items from a quote." else "No match.", color = Z.muted, modifier = Modifier.padding(vertical = 14.dp))
+            }
+            items(shown, key = { it.id }) { m -> StockRow(m, holds[m.id] ?: 0.0) { editing = m } }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+
+    editing?.let { m -> MaterialDialog(vm, m) { editing = null } }
+}
+
+@Composable
+private fun Legend(text: String, color: androidx.compose.ui.graphics.Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(14.dp).height(4.dp).background(color)); Spacer(Modifier.width(6.dp)); Label(text)
+    }
+}
+
+@Composable
+private fun StockRow(m: Material, hold: Double, onClick: () -> Unit) {
+    val free = m.onHand - hold
+    val low = free < m.alertLevel || free < 0
+    Column(Modifier.clickable { onClick() }.padding(vertical = 12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.weight(1f)) {
+                Text(m.name, color = Z.text, fontSize = 17.sp)
+                Label(listOf(m.location, m.spec).filter { it.isNotBlank() }.joinToString(" · "))
+            }
+            if (low) StatusDot("Low", Z.warn)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth()) {
+            Num("On hand", "${qtyText(m.onHand)} ${m.unit}", Z.text, Modifier.weight(1f))
+            Num("On hold", "${qtyText(hold)} ${m.unit}", Z.text, Modifier.weight(1f))
+            Num("Free", "${qtyText(free)} ${m.unit}", if (low) Z.warn else Z.text, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(6.dp))
+        val total = maxOf(m.onHand, hold, 1.0)
+        Row(Modifier.fillMaxWidth().height(4.dp).background(Z.track)) {
+            val h = (minOf(hold, m.onHand) / total).toFloat()
+            val f = (maxOf(free, 0.0) / total).toFloat()
+            if (h > 0f) Box(Modifier.weight(h).height(4.dp).background(Z.info))
+            if (f > 0f) Box(Modifier.weight(f).height(4.dp).background(Z.ok))
+            val rest = 1f - h - f
+            if (rest > 0.001f) Spacer(Modifier.weight(rest))
+        }
+    }
+    Divider()
+}
+
+@Composable
+private fun Num(label: String, value: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+    Column(modifier) { Label(label); Text(value, color = color, fontSize = 19.sp, fontFamily = Condensed) }
+}
+
+@Composable
+fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
+    val isNew = m.id == 0L
+    var name by remember { mutableStateOf(m.name) }
+    var spec by remember { mutableStateOf(m.spec) }
+    var unit by remember { mutableStateOf(m.unit) }
+    var onHand by remember { mutableStateOf(qtyText(m.onHand)) }
+    var alert by remember { mutableStateOf(qtyText(m.alertLevel)) }
+    var cost by remember { mutableStateOf(if (m.cost == 0.0) "" else qtyText(m.cost)) }
+    var location by remember { mutableStateOf(m.location) }
+    var receive by remember { mutableStateOf("") }
+    var used by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    if (confirmDelete) {
+        ZDialog("Delete ${m.name}?", onClose, confirm = "Delete" to { vm.deleteMaterial(m); onClose() }, dismiss = "Keep" to { confirmDelete = false }) {
+            Text("Quotes that use it keep their lines, but it won't be tracked in stock anymore.", color = Z.muted)
+        }
+        return
+    }
+
+    ZDialog(if (isNew) "Add to stock" else "Edit stock item", onClose,
+        confirm = "Save" to {
+            if (name.isNotBlank()) {
+                val base = m.copy(name = name.trim(), spec = spec.trim(), unit = unit.trim().ifBlank { "ea" },
+                    alertLevel = alert.toNum(), cost = cost.toNum(), location = location.trim().ifBlank { "Truck" })
+                if (isNew) vm.saveMaterial(base.copy(onHand = onHand.toNum()))
+                else {
+                    val moves = buildList {
+                        if (receive.toNum() > 0) add(receive.toNum() to "Received")
+                        if (used.toNum() > 0) add(-used.toNum() to "Used (not on a quote)")
+                    }
+                    vm.saveMaterialWithMoves(base, moves)
+                }
+                onClose()
+            }
+        },
+        dismiss = (if (isNew) "Cancel" else "Delete") to { if (isNew) onClose() else confirmDelete = true }) {
+        androidx.compose.foundation.lazy.LazyColumn {
+            item {
+                Field("Name", name, { name = it })
+                Spacer(Modifier.height(6.dp))
+                Field("Brand / model / size", spec, { spec = it })
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Field("Unit (ea, ft)", unit, { unit = it }, Modifier.weight(1f))
+                    Field("Where", location, { location = it }, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (isNew) Field("On hand", onHand, { onHand = it }, Modifier.weight(1f), number = true)
+                    Field("Alert under", alert, { alert = it }, Modifier.weight(1f), number = true)
+                }
+                Spacer(Modifier.height(6.dp))
+                Field("Your cost per unit (incl. tax)", cost, { cost = it }, number = true)
+                Text("Tip: bought a 250 ft roll for \$500? Enter unit \"ft\" and cost 2.00.", color = Z.muted, fontSize = 12.sp)
+                if (!isNew) {
+                    Spacer(Modifier.height(10.dp))
+                    Label("On hand now: ${qtyText(m.onHand)} ${m.unit}")
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Field("+ Received", receive, { receive = it }, Modifier.weight(1f), number = true)
+                        Field("− Used", used, { used = it }, Modifier.weight(1f), number = true)
+                    }
+                }
+            }
+        }
+    }
+}

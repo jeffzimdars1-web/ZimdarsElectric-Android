@@ -1,0 +1,61 @@
+package com.zimdarselectric.app.data
+
+import java.text.NumberFormat
+import java.util.Locale
+
+/** Everything a quote adds up to: what the customer sees, and your private numbers. */
+data class QuoteTotals(
+    val materialsCost: Double,
+    val markup: Double,
+    val materialsPrice: Double,
+    val labor: Double,
+    val salesTax: Double,
+    val total: Double,
+    // Private
+    val fuel: Double,
+    val supplies: Double,
+    val profit: Double,
+    val savings: Double,
+    val taxSetAside: Double,
+    val takeHome: Double,
+    val perHour: Double,
+)
+
+fun computeTotals(q: Quote, lines: List<QuoteLine>, s: Settings): QuoteTotals {
+    val materialsCost = lines.sumOf { it.qty * it.unitCost }
+    val markup = materialsCost * q.markupPct / 100.0
+    val materialsPrice = materialsCost + markup
+    val labor = q.laborHours * q.laborRate
+    val taxable = if (q.jobType == JobType.REPAIR) materialsPrice + labor else 0.0
+    val salesTax = taxable * q.taxRatePct / 100.0
+    val total = materialsPrice + labor + salesTax
+
+    val fuel = if (s.mpg > 0) q.miles / s.mpg * s.gasPrice else 0.0
+    val supplies = materialsCost * s.suppliesPct / 100.0
+    val profit = total - salesTax - materialsCost - fuel - supplies
+    val savings = (total - salesTax) * s.savingsPct / 100.0
+    val taxSetAside = maxOf(profit, 0.0) * s.taxSetAsidePct / 100.0
+    val takeHome = profit - savings - taxSetAside
+    val perHour = if (q.laborHours > 0) takeHome / q.laborHours else 0.0
+    return QuoteTotals(materialsCost, markup, materialsPrice, labor, salesTax, total,
+        fuel, supplies, profit, savings, taxSetAside, takeHome, perHour)
+}
+
+/**
+ * How much of each material is on hold: the sum of quantities on every quote that is
+ * Draft, Sent or Approved. Pass [excludeQuoteId] to leave one quote out.
+ */
+fun holdsByMaterial(quotes: List<Quote>, lines: List<QuoteLine>, excludeQuoteId: Long? = null): Map<Long, Double> {
+    val holding = quotes.filter { it.status in Status.holding && it.id != excludeQuoteId }.map { it.id }.toSet()
+    return lines.filter { it.quoteId in holding && it.materialId != null }
+        .groupBy { it.materialId!! }
+        .mapValues { (_, ls) -> ls.sumOf { it.qty } }
+}
+
+private val moneyFmt: NumberFormat = NumberFormat.getCurrencyInstance(Locale.US)
+fun money(v: Double): String = moneyFmt.format(v)
+
+fun qtyText(v: Double): String =
+    if (v == Math.floor(v) && !v.isInfinite()) v.toLong().toString() else String.format(Locale.US, "%.2f", v).trimEnd('0').trimEnd('.')
+
+fun String.toNum(): Double = this.replace(",", "").replace("$", "").trim().toDoubleOrNull() ?: 0.0
