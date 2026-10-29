@@ -106,10 +106,17 @@ fun BooksScreen(vm: AppViewModel, nav: Nav) {
         if (uri == null) return@rememberLauncherForActivityResult
         try {
             val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
-            val list = parseExpenses(text)
-            if (list.isEmpty()) message = "That file had no receipts in it."
+            val obj = text.trim().takeIf { it.startsWith("{") }?.let { org.json.JSONObject(it) }
+            val list = if (obj != null && !obj.has("expenses")) emptyList() else parseExpenses(text)
+            val stock = obj?.optJSONArray("stock")
+            if (list.isEmpty() && stock == null) message = "That file had no receipts in it."
             else vm.importExpenses(list) { added, skipped ->
-                message = "Added $added receipt${if (added == 1) "" else "s"}" + if (skipped > 0) " · $skipped already in Books" else ""
+                val receipts = if (list.isEmpty()) "" else "Added $added receipt${if (added == 1) "" else "s"}" + if (skipped > 0) " · $skipped already in Books" else ""
+                if (stock == null) message = receipts
+                else vm.importStockUpdates(stock) { n, notFound ->
+                    message = listOf(receipts, "Updated $n stock item${if (n == 1) "" else "s"}",
+                        if (notFound.isNotEmpty()) "Not found: ${notFound.joinToString()}" else "").filter { it.isNotBlank() }.joinToString(" · ")
+                }
             }
         } catch (e: Exception) {
             message = "Couldn't read that file. Make sure it's the receipts file."

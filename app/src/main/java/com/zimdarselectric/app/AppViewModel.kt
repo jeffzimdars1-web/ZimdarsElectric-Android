@@ -312,6 +312,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.material(id)?.let(onDone)
     }
 
+    /**
+     * Stock changes from an update file: [{name, packSize, boxPrice | cost, fromReceipt:{date, vendor, amount, line}, action:"add"|"counted"}].
+     * Sets box size and price, then adds the receipt line to stock (once; a line already added is left alone).
+     */
+    fun importStockUpdates(list: org.json.JSONArray, onDone: (updated: Int, notFound: List<String>) -> Unit) = viewModelScope.launch {
+        val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        var updated = 0
+        val notFound = mutableListOf<String>()
+        for (i in 0 until list.length()) {
+            val o = list.optJSONObject(i) ?: continue
+            val name = o.optString("name").trim()
+            val m0 = dao.materialsNow().firstOrNull { it.name.equals(name, true) }
+            if (m0 == null) { notFound += name; continue }
+            val pack = o.optDouble("packSize", m0.packSize).takeIf { !it.isNaN() } ?: m0.packSize
+            val cost = when {
+                o.has("boxPrice") && pack > 1.0 -> o.optDouble("boxPrice") / pack
+                o.has("cost") -> o.optDouble("cost")
+                else -> m0.cost
+            }
+            var m = m0.copy(packSize = if (pack > 1.0) pack else 0.0, cost = cost)
+            dao.updateMaterial(m)
+            o.optJSONObject("fromReceipt")?.let { fr ->
+                val e = dao.expensesNow().firstOrNull {
+                    day.format(java.util.Date(it.date)) == fr.optString("date") && it.vendor.equals(fr.optString("vendor"), true) &&
+                        Math.round(it.amount * 100) == Math.round(fr.optDouble("amount") * 100)
+                }
+                val r = e?.let { com.zimdarselectric.app.data.ReceiptItem.from(it).getOrNull(fr.optInt("line", -1)) }
+                if (r != null && !r.decided) {
+                    if (o.optString("action", "add") == "counted") {
+                        dao.updateMaterial(m.withAliases(r.keys)); markLine(r, "counted")
+                    } else addLineToStock(r, m)
+                }
+            }
+            updated++
+        }
+        onDone(updated, notFound)
+    }
+
     fun deleteExpense(e: Expense) = viewModelScope.launch {
         dao.attachmentsFor(e.id).forEach { a -> java.io.File(a.path).delete(); dao.deleteAttachment(a) }
         dao.deleteExpense(e)
