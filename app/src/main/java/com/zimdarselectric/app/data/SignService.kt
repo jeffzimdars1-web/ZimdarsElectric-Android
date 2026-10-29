@@ -78,7 +78,7 @@ object SignService {
             .put("labor", JSONObject().put("hours", q.laborHours).put("rate", q.laborRate).put("amount", r2(t.labor)))
             .put("totals", JSONObject().put("materials", r2(t.materialsPrice)).put("labor", r2(t.labor))
                 .put("subtotal", r2(t.materialsPrice + t.labor)).put("taxRate", q.taxRatePct).put("tax", r2(t.salesTax)).put("total", r2(t.total)))
-            .put("terms", JSONObject().put("payment", s.paymentTerms).put("warranty", s.warranty))
+            .put("terms", JSONObject().put("rates", s.chargeNote).put("payment", s.paymentTerms).put("warranty", s.warranty))
             .put("notices", JSONArray(contractNotices(s)))
     }
 

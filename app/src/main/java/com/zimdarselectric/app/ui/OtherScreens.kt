@@ -454,6 +454,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
 
             SectionHeader("06", "Terms · print on estimates")
+            TextFieldSaved("How I charge (every customer sees this)", s.chargeNote, "cn", singleLine = false) { save(s.copy(chargeNote = it)) }; Gap()
             TextFieldSaved("Payment terms", s.paymentTerms, "pt", singleLine = false) { save(s.copy(paymentTerms = it)) }; Gap()
             TextFieldSaved("Warranty", s.warranty, "wa", singleLine = false) { save(s.copy(warranty = it)) }
 

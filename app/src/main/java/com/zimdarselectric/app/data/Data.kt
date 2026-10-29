@@ -151,6 +151,8 @@ data class Attachment(
     val addedAt: Long = System.currentTimeMillis(),
 )
 
+const val CHARGE_NOTE = "Service call \$125 covers the trip and the first 30 minutes on site. After that, \$95 per hour in 30-minute blocks. Flat-price work is quoted before any work starts, and nothing is done without your OK."
+
 @Entity
 data class Settings(
     @PrimaryKey val id: Int = 1,
@@ -172,6 +174,8 @@ data class Settings(
     val license: String = "",
     val insurer: String = "",
     val quoteValidDays: Int = 30,
+    /** How you charge, shown to every customer on quotes and the signing page. */
+    @ColumnInfo(defaultValue = CHARGE_NOTE) val chargeNote: String = CHARGE_NOTE,
     /** Key that lets this phone create signing links. Kept only on the phone. */
     @ColumnInfo(defaultValue = "") val signKey: String = "",
 )
@@ -310,9 +314,16 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 6 adds the "How I charge" note. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Settings` ADD COLUMN `chargeNote` TEXT NOT NULL DEFAULT '" + CHARGE_NOTE.replace("'", "''") + "'")
+    }
+}
+
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -322,7 +333,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build().also { instance = it }
         }
     }

@@ -180,6 +180,7 @@
     }
 
     m.appendChild(el("h2", { text: "Terms" }));
+    if (terms.rates) m.appendChild(el("p", null, [el("b", { text: "How I charge: " }), terms.rates]));
     if (terms.payment) m.appendChild(el("p", null, [el("b", { text: "Payment: " }), terms.payment]));
     if (terms.warranty) m.appendChild(el("p", null, [el("b", { text: "Warranty: " }), terms.warranty]));
     var notices = el("div", { cls: "notices" });

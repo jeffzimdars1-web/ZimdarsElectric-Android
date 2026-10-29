@@ -215,6 +215,7 @@ object QuotePdf {
             }
 
             section("Terms")
+            if (s.chargeNote.isNotBlank()) para("How I charge: " + s.chargeNote)
             if (s.paymentTerms.isNotBlank()) para("Payment: " + s.paymentTerms)
             if (s.warranty.isNotBlank()) para("Warranty: " + s.warranty)
             SignService.contractNotices(s).forEach { para(it, small, after = 4f) }
