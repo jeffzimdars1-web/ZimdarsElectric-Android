@@ -1,5 +1,7 @@
 package com.zimdarselectric.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,14 +65,46 @@ private fun BackHeader(title: String, onBack: () -> Unit) {
 
 // ---------------- Books ----------------
 
+private val isoDay = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+
+/** Reads a receipts file: a JSON list (or {"expenses": [...]}) of {date, vendor, amount, category, note}. */
+fun parseExpenses(text: String): List<Expense> {
+    val trimmed = text.trim()
+    val arr = if (trimmed.startsWith("[")) org.json.JSONArray(trimmed) else org.json.JSONObject(trimmed).getJSONArray("expenses")
+    return (0 until arr.length()).mapNotNull { i ->
+        val o = arr.getJSONObject(i)
+        val amount = o.optDouble("amount", 0.0)
+        val vendor = o.optString("vendor").trim()
+        if (vendor.isBlank() || amount <= 0.0) return@mapNotNull null
+        val date = runCatching { isoDay.parse(o.optString("date"))?.time }.getOrNull() ?: System.currentTimeMillis()
+        val cat = o.optString("category").ifBlank { ExpenseCategories.last() }
+        Expense(date = date, vendor = vendor, amount = amount, category = cat, note = o.optString("note"))
+    }
+}
+
 @Composable
 fun BooksScreen(vm: AppViewModel) {
     val quotes by vm.quotes.collectAsState()
     val lines by vm.lines.collectAsState()
     val expenses by vm.expenses.collectAsState()
     val settings by vm.settings.collectAsState()
-    var adding by remember { mutableStateOf(false) }
-    var deleting by remember { mutableStateOf<Expense?>(null) }
+    val context = LocalContext.current
+    var editing by remember { mutableStateOf<Expense?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+            val list = parseExpenses(text)
+            if (list.isEmpty()) message = "That file had no receipts in it."
+            else vm.importExpenses(list) { added, skipped ->
+                message = "Added $added receipt${if (added == 1) "" else "s"}" + if (skipped > 0) " · $skipped already in Books" else ""
+            }
+        } catch (e: Exception) {
+            message = "Couldn't read that file. Make sure it's the receipts file."
+        }
+    }
 
     val year = Calendar.getInstance().get(Calendar.YEAR)
     fun inYear(t: Long?) = t != null && Calendar.getInstance().apply { timeInMillis = t }.get(Calendar.YEAR) == year
@@ -84,10 +118,16 @@ fun BooksScreen(vm: AppViewModel) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
         item {
             Spacer(Modifier.height(22.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column { Title("Books", 38); Label("Tax year $year", color = Z.neon) }
-                Box(Modifier.width(150.dp)) { NeonButton("+ Expense", Modifier.fillMaxWidth()) { adding = true } }
+            Column { Title("Books", 38); Label("Tax year $year", color = Z.neon) }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                NeonButton("+ Expense", Modifier.weight(1f)) { editing = Expense(vendor = "", amount = 0.0, category = ExpenseCategories.first()) }
+                GhostButton("Import file", Modifier.weight(1f).height(54.dp)) {
+                    message = null
+                    importer.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
+                }
             }
+            message?.let { Spacer(Modifier.height(10.dp)); Text(it, color = Z.neon, fontSize = 15.sp) }
             Spacer(Modifier.height(18.dp))
             Label(if (net >= 0) "Net profit so far" else "Net loss so far")
             Text(money(net), fontFamily = Condensed, fontSize = 52.sp, color = if (net >= 0) Z.neon else Z.warn)
@@ -104,31 +144,29 @@ fun BooksScreen(vm: AppViewModel) {
                 MoneyRow(cat, money(l.sumOf { it.amount }))
             }
             if (yearExpenses.isEmpty()) Text("No expenses yet this year.", color = Z.muted, modifier = Modifier.padding(vertical = 10.dp))
-            SectionHeader("02", "Expenses")
+            SectionHeader("02", "Receipts · tap to edit")
         }
         items(yearExpenses, key = { it.id }) { e ->
-            ListRow("${e.vendor} · ${money(e.amount)}", "${SimpleDateFormat("MMM d", Locale.US).format(Date(e.date))} · ${e.category}".uppercase(),
-                onClick = { deleting = e })
+            ListRow("${e.vendor} · ${money(e.amount)}", "${SimpleDateFormat("MMM d", Locale.US).format(Date(e.date))} · ${e.category}".uppercase()
+                + if (e.note.isNotBlank()) "\n" + e.note else "",
+                onClick = { editing = e })
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
 
-    if (adding) ExpenseDialog(onDismiss = { adding = false }) { vm.addExpense(it); adding = false }
-    deleting?.let { e ->
-        ZDialog("${e.vendor} · ${money(e.amount)}", { deleting = null },
-            confirm = "Close" to { deleting = null }, dismiss = "Delete" to { vm.deleteExpense(e); deleting = null }) {
-            Text(e.category, color = Z.muted)
-            if (e.note.isNotBlank()) Text(e.note, color = Z.text)
-        }
+    editing?.let { e ->
+        ExpenseDialog(e, onDismiss = { editing = null }, onDelete = { vm.deleteExpense(e); editing = null }) { vm.addExpense(it); editing = null }
     }
 }
 
 @Composable
-private fun ExpenseDialog(onDismiss: () -> Unit, onSave: (Expense) -> Unit) {
-    var vendor by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(ExpenseCategories.first()) }
-    var note by remember { mutableStateOf("") }
+private fun ExpenseDialog(initial: Expense, onDismiss: () -> Unit, onDelete: () -> Unit, onSave: (Expense) -> Unit) {
+    val isNew = initial.id == 0L
+    var vendor by remember { mutableStateOf(initial.vendor) }
+    var amount by remember { mutableStateOf(if (initial.amount == 0.0) "" else qtyText(initial.amount)) }
+    var date by remember { mutableStateOf(isoDay.format(Date(initial.date))) }
+    var category by remember { mutableStateOf(initial.category) }
+    var note by remember { mutableStateOf(initial.note) }
     var picking by remember { mutableStateOf(false) }
     if (picking) {
         ZDialog("Tax category", { picking = false }, confirm = "Back" to { picking = false }) {
@@ -138,18 +176,28 @@ private fun ExpenseDialog(onDismiss: () -> Unit, onSave: (Expense) -> Unit) {
         }
         return
     }
-    ZDialog("Add expense", onDismiss,
-        confirm = "Save" to { if (vendor.isNotBlank() && amount.toNum() > 0) onSave(Expense(vendor = vendor.trim(), amount = amount.toNum(), category = category, note = note.trim())) },
-        dismiss = "Cancel" to onDismiss) {
-        Field("Store / vendor", vendor, { vendor = it })
-        Spacer(Modifier.height(6.dp))
-        Field("Total paid (incl. tax)", amount, { amount = it }, number = true)
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth().clickable { picking = true }.padding(vertical = 8.dp)) {
-            Column(Modifier.weight(1f)) { Label("Tax category"); Text(category, color = Z.text) }
-            Label("Change", color = Z.neon)
+    ZDialog(if (isNew) "Add expense" else "Edit expense", onDismiss,
+        confirm = "Save" to {
+            val d = runCatching { isoDay.parse(date.trim())?.time }.getOrNull() ?: initial.date
+            if (vendor.isNotBlank() && amount.toNum() > 0) onSave(initial.copy(vendor = vendor.trim(), amount = amount.toNum(), date = d, category = category, note = note.trim()))
+        },
+        dismiss = (if (isNew) "Cancel" else "Delete") to { if (isNew) onDismiss() else onDelete() }) {
+        LazyColumn {
+            item {
+                Field("Store / vendor", vendor, { vendor = it })
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Field("Total paid", amount, { amount = it }, Modifier.weight(1f), number = true)
+                    Field("Date (YYYY-MM-DD)", date, { date = it }, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth().clickable { picking = true }.padding(vertical = 8.dp)) {
+                    Column(Modifier.weight(1f)) { Label("Tax category"); Text(category, color = Z.text) }
+                    Label("Change", color = Z.neon)
+                }
+                Field("Note (what it was for)", note, { note = it }, singleLine = false)
+            }
         }
-        Field("Note (what it was for)", note, { note = it })
     }
 }
 

@@ -209,6 +209,10 @@ interface AppDao {
     fun expenses(): Flow<List<Expense>>
 
     @Insert suspend fun insertExpense(e: Expense): Long
+    @Update suspend fun updateExpense(e: Expense)
+
+    @Query("SELECT * FROM Expense")
+    suspend fun expensesNow(): List<Expense>
     @Delete suspend fun deleteExpense(e: Expense)
 
     @Query("SELECT * FROM Settings WHERE id = 1")

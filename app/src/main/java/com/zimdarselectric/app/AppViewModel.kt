@@ -114,6 +114,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- Books ----------
-    fun addExpense(e: Expense) = viewModelScope.launch { dao.insertExpense(e) }
+    fun addExpense(e: Expense) = viewModelScope.launch { if (e.id == 0L) dao.insertExpense(e) else dao.updateExpense(e) }
+
+    /** Adds receipts from an import file, skipping any already in Books (same day, vendor and amount). */
+    fun importExpenses(items: List<Expense>, onDone: (added: Int, skipped: Int) -> Unit) = viewModelScope.launch {
+        val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+        val existing = dao.expensesNow().map { Triple(day.format(java.util.Date(it.date)), it.vendor.lowercase(), Math.round(it.amount * 100)) }.toMutableSet()
+        var added = 0
+        for (e in items) {
+            val k = Triple(day.format(java.util.Date(e.date)), e.vendor.lowercase(), Math.round(e.amount * 100))
+            if (k in existing) continue
+            dao.insertExpense(e); existing.add(k); added++
+        }
+        onDone(added, items.size - added)
+    }
     fun deleteExpense(e: Expense) = viewModelScope.launch { dao.deleteExpense(e) }
 }
