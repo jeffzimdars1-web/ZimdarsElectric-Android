@@ -68,7 +68,7 @@ private fun BackHeader(title: String, onBack: () -> Unit) {
 private val isoDay = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
 /** Reads a receipts file: a JSON list (or {"expenses": [...]}) of {date, vendor, amount, category, note}. */
-fun parseExpenses(text: String): List<Expense> {
+fun parseExpenses(text: String): List<Pair<Expense, List<AppViewModel.ImportFile>>> {
     val trimmed = text.trim()
     val arr = if (trimmed.startsWith("[")) org.json.JSONArray(trimmed) else org.json.JSONObject(trimmed).getJSONArray("expenses")
     return (0 until arr.length()).mapNotNull { i ->
@@ -78,16 +78,25 @@ fun parseExpenses(text: String): List<Expense> {
         if (vendor.isBlank() || amount <= 0.0) return@mapNotNull null
         val date = runCatching { isoDay.parse(o.optString("date"))?.time }.getOrNull() ?: System.currentTimeMillis()
         val cat = o.optString("category").ifBlank { ExpenseCategories.last() }
-        Expense(date = date, vendor = vendor, amount = amount, category = cat, note = o.optString("note"))
+        val files = mutableListOf<AppViewModel.ImportFile>()
+        o.optJSONArray("attachments")?.let { atts ->
+            for (j in 0 until atts.length()) {
+                val a = atts.getJSONObject(j)
+                val bytes = runCatching { android.util.Base64.decode(a.optString("data"), android.util.Base64.DEFAULT) }.getOrNull() ?: continue
+                files.add(AppViewModel.ImportFile(a.optString("name", "receipt"), a.optString("mime", "application/pdf"), bytes))
+            }
+        }
+        Expense(date = date, vendor = vendor, amount = amount, category = cat, note = o.optString("note")) to files
     }
 }
 
 @Composable
-fun BooksScreen(vm: AppViewModel) {
+fun BooksScreen(vm: AppViewModel, nav: Nav) {
     val quotes by vm.quotes.collectAsState()
     val lines by vm.lines.collectAsState()
     val expenses by vm.expenses.collectAsState()
     val settings by vm.settings.collectAsState()
+    val attachments by vm.attachments.collectAsState()
     val context = LocalContext.current
     var editing by remember { mutableStateOf<Expense?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -144,12 +153,15 @@ fun BooksScreen(vm: AppViewModel) {
                 MoneyRow(cat, money(l.sumOf { it.amount }))
             }
             if (yearExpenses.isEmpty()) Text("No expenses yet this year.", color = Z.muted, modifier = Modifier.padding(vertical = 10.dp))
-            SectionHeader("02", "Receipts · tap to edit")
+            val missing = yearExpenses.count { e -> attachments.none { it.expenseId == e.id } }
+            SectionHeader("02", "Expenses · tap for details", if (missing > 0) "$missing need a receipt" else null)
         }
         items(yearExpenses, key = { it.id }) { e ->
             ListRow("${e.vendor} · ${money(e.amount)}", "${SimpleDateFormat("MMM d", Locale.US).format(Date(e.date))} · ${e.category}".uppercase()
                 + if (e.note.isNotBlank()) "\n" + e.note else "",
-                onClick = { editing = e })
+                onClick = { nav.open(Page.ExpenseDetail(e.id)) }) {
+                if (attachments.any { it.expenseId == e.id }) StatusDot("Receipt", Z.ok) else StatusDot("No receipt", Z.warn)
+            }
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
@@ -160,7 +172,7 @@ fun BooksScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun ExpenseDialog(initial: Expense, onDismiss: () -> Unit, onDelete: () -> Unit, onSave: (Expense) -> Unit) {
+fun ExpenseDialog(initial: Expense, onDismiss: () -> Unit, onDelete: () -> Unit, onSave: (Expense) -> Unit) {
     val isNew = initial.id == 0L
     var vendor by remember { mutableStateOf(initial.vendor) }
     var amount by remember { mutableStateOf(if (initial.amount == 0.0) "" else qtyText(initial.amount)) }

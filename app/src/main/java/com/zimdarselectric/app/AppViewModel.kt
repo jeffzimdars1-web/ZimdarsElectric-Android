@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zimdarselectric.app.data.AppDb
+import com.zimdarselectric.app.data.Attachment
 import com.zimdarselectric.app.data.Customer
 import com.zimdarselectric.app.data.Expense
 import com.zimdarselectric.app.data.Material
@@ -31,6 +32,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val quotes = hot(dao.quotes(), emptyList())
     val lines = hot(dao.allLines(), emptyList())
     val expenses = hot(dao.expenses(), emptyList())
+    val attachments = hot(dao.attachments(), emptyList())
     val settings: StateFlow<Settings> = hot(dao.settings().map { it ?: Settings() }, Settings())
 
     /** Material id -> quantity on hold across all open quotes. */
@@ -117,16 +119,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun addExpense(e: Expense) = viewModelScope.launch { if (e.id == 0L) dao.insertExpense(e) else dao.updateExpense(e) }
 
     /** Adds receipts from an import file, skipping any already in Books (same day, vendor and amount). */
-    fun importExpenses(items: List<Expense>, onDone: (added: Int, skipped: Int) -> Unit) = viewModelScope.launch {
+    fun importExpenses(items: List<Pair<Expense, List<ImportFile>>>, onDone: (added: Int, skipped: Int) -> Unit) = viewModelScope.launch {
         val day = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
         val existing = dao.expensesNow().map { Triple(day.format(java.util.Date(it.date)), it.vendor.lowercase(), Math.round(it.amount * 100)) }.toMutableSet()
         var added = 0
-        for (e in items) {
+        for ((e, files) in items) {
             val k = Triple(day.format(java.util.Date(e.date)), e.vendor.lowercase(), Math.round(e.amount * 100))
             if (k in existing) continue
-            dao.insertExpense(e); existing.add(k); added++
+            val id = dao.insertExpense(e); existing.add(k); added++
+            for (f in files) {
+                val dest = java.io.File(receiptDir(id), "${System.currentTimeMillis()}_${safeName(f.name)}")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dest.writeBytes(f.bytes) }
+                dao.insertAttachment(Attachment(expenseId = id, fileName = f.name, mime = f.mime, path = dest.absolutePath))
+            }
         }
         onDone(added, items.size - added)
     }
-    fun deleteExpense(e: Expense) = viewModelScope.launch { dao.deleteExpense(e) }
+    fun deleteExpense(e: Expense) = viewModelScope.launch {
+        dao.attachmentsFor(e.id).forEach { a -> java.io.File(a.path).delete(); dao.deleteAttachment(a) }
+        dao.deleteExpense(e)
+    }
+
+    // ---------- Receipt copies ----------
+    private val app get() = getApplication<Application>()
+    private fun receiptDir(expenseId: Long) = java.io.File(app.filesDir, "receipts/$expenseId").apply { mkdirs() }
+    private fun safeName(n: String) = n.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80).ifBlank { "receipt" }
+
+    /** A temp file in app storage the camera can write into. */
+    fun newPhotoFile(): java.io.File = java.io.File(app.filesDir, "receipts/tmp").apply { mkdirs() }
+        .let { java.io.File(it, "photo_${System.currentTimeMillis()}.jpg") }
+
+    /** Moves a photo taken with the camera onto an expense. */
+    fun attachPhoto(expenseId: Long, photo: java.io.File) = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        if (!photo.exists() || photo.length() == 0L) return@launch
+        val dest = java.io.File(receiptDir(expenseId), photo.name)
+        photo.copyTo(dest, overwrite = true); photo.delete()
+        dao.insertAttachment(Attachment(expenseId = expenseId, fileName = "Photo " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date()), mime = "image/jpeg", path = dest.absolutePath))
+    }
+
+    /** Copies a picked file (PDF, screenshot, photo) into app storage and attaches it. */
+    fun attachUri(expenseId: Long, uri: android.net.Uri) = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val cr = app.contentResolver
+        val mime = cr.getType(uri) ?: "application/octet-stream"
+        var name = "receipt"
+        cr.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) name = c.getString(0) ?: name
+        }
+        val dest = java.io.File(receiptDir(expenseId), "${System.currentTimeMillis()}_${safeName(name)}")
+        cr.openInputStream(uri)?.use { input -> dest.outputStream().use { input.copyTo(it) } } ?: return@launch
+        dao.insertAttachment(Attachment(expenseId = expenseId, fileName = name, mime = mime, path = dest.absolutePath))
+    }
+
+    fun deleteAttachment(a: Attachment) = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        java.io.File(a.path).delete(); dao.deleteAttachment(a)
+    }
+
+    /** A receipt file carried inside an import file. */
+    data class ImportFile(val name: String, val mime: String, val bytes: ByteArray)
 }

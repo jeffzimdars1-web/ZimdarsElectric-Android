@@ -12,6 +12,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 /** Quote status values. Draft, Sent and Approved quotes put their materials on hold. */
@@ -112,6 +114,18 @@ data class Expense(
     val amount: Double,
     val category: String,
     val note: String = "",
+)
+
+/** A copy of a receipt (photo or PDF) stored on the phone, attached to an expense. */
+@Entity
+data class Attachment(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val expenseId: Long,
+    val fileName: String,
+    val mime: String,
+    /** Absolute path inside the app's private storage. */
+    val path: String,
+    val addedAt: Long = System.currentTimeMillis(),
 )
 
 @Entity
@@ -222,11 +236,27 @@ interface AppDao {
     suspend fun settingsNow(): Settings?
 
     @Upsert suspend fun saveSettings(s: Settings)
+
+    @Query("SELECT * FROM Attachment ORDER BY addedAt")
+    fun attachments(): Flow<List<Attachment>>
+
+    @Query("SELECT * FROM Attachment WHERE expenseId = :expenseId")
+    suspend fun attachmentsFor(expenseId: Long): List<Attachment>
+
+    @Insert suspend fun insertAttachment(a: Attachment): Long
+    @Delete suspend fun deleteAttachment(a: Attachment)
+}
+
+/** Version 2 adds receipt attachments. Keeps all existing data. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `Attachment` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `expenseId` INTEGER NOT NULL, `fileName` TEXT NOT NULL, `mime` TEXT NOT NULL, `path` TEXT NOT NULL, `addedAt` INTEGER NOT NULL)")
+    }
 }
 
 @Database(
-    entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class],
-    version = 1,
+    entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -236,6 +266,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
+                .addMigrations(MIGRATION_1_2)
                 .build().also { instance = it }
         }
     }

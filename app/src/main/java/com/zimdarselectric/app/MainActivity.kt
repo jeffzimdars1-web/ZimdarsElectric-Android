@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zimdarselectric.app.ui.BooksScreen
 import com.zimdarselectric.app.ui.CustomersScreen
+import com.zimdarselectric.app.ui.ExpenseDetailScreen
 import com.zimdarselectric.app.ui.HomeScreen
 import com.zimdarselectric.app.ui.Mono
 import com.zimdarselectric.app.ui.MoreScreen
@@ -59,6 +60,7 @@ sealed interface Page {
     data object Customers : Page
     data object Tools : Page
     data object Settings : Page
+    data class ExpenseDetail(val id: Long) : Page
 }
 
 class Nav {
@@ -82,11 +84,12 @@ fun App(vm: AppViewModel = viewModel()) {
                 Page.Customers -> CustomersScreen(vm, onBack = { nav.back() })
                 Page.Tools -> ToolsScreen(onBack = { nav.back() })
                 Page.Settings -> SettingsScreen(vm, onBack = { nav.back() })
+                is Page.ExpenseDetail -> ExpenseDetailScreen(vm, top.id, onBack = { nav.back() })
                 null -> when (nav.tab) {
                     Tab.HOME -> HomeScreen(vm, nav)
                     Tab.QUOTES -> QuotesScreen(vm, nav)
                     Tab.STOCK -> StockScreen(vm)
-                    Tab.BOOKS -> BooksScreen(vm)
+                    Tab.BOOKS -> BooksScreen(vm, nav)
                     Tab.MORE -> MoreScreen(nav)
                 }
             }
