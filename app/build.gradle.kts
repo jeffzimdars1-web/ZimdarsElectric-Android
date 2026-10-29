@@ -22,7 +22,8 @@ android {
         versionName = "0.1.$buildNumber"
         buildConfigField("String", "RELEASES_REPO", "\"$releasesRepo\"")
         // Samsung Galaxy phones are 64-bit ARM; skipping other chips keeps the download small.
-        ndk { abiFilters += listOf("arm64-v8a") }
+        ndk { abiFilters += if (project.hasProperty("allAbis")) listOf("arm64-v8a", "x86_64") else listOf("arm64-v8a") }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -80,6 +81,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
