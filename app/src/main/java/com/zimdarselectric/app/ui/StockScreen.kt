@@ -106,7 +106,9 @@ private fun StockRow(m: Material, hold: Double, onClick: () -> Unit) {
     val free = m.onHand - hold
     val low = free < m.alertLevel || free < 0
     Column(Modifier.clickable { onClick() }.padding(vertical = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            ItemThumb(m.photoPath, 52.dp)
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(m.name, color = Z.text, fontSize = 17.sp)
                 Label(listOf(m.location, m.spec).filter { it.isNotBlank() }.joinToString(" · "))
@@ -152,19 +154,36 @@ fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
     var used by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
     var nameLocked by remember { mutableStateOf(m.name.isNotBlank()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var photo by remember { mutableStateOf(m.photoPath) }
+    var pending by remember { mutableStateOf<java.io.File?>(null) }
+    var viewing by remember { mutableStateOf(false) }
+    val camera = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
+        val f = pending; pending = null
+        if (ok && f != null) vm.shrinkItemPhoto(f) { good -> if (good) { if (photo != m.photoPath) vm.discardItemPhoto(photo); photo = f.path } }
+        else f?.delete()
+    }
+    fun snap() {
+        val f = vm.newItemPhotoFile(); pending = f
+        camera.launch(androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f))
+    }
+    /** Closing without saving throws away a photo taken in this dialog. */
+    val cancel = { if (photo != m.photoPath) vm.discardItemPhoto(photo); onClose() }
 
     if (confirmDelete) {
-        ZDialog("Delete ${m.name}?", onClose, confirm = "Delete" to { vm.deleteMaterial(m); onClose() }, dismiss = "Keep" to { confirmDelete = false }) {
+        ZDialog("Delete ${m.name}?", cancel, confirm = "Delete" to { vm.deleteMaterial(m); cancel() }, dismiss = "Keep" to { confirmDelete = false }) {
             Text("Quotes that use it keep their lines, but it won't be tracked in stock anymore.", color = Z.muted)
         }
         return
     }
 
-    ZDialog(if (isNew) "Add to stock" else "Edit stock item", onClose,
+    if (viewing && photo.isNotBlank()) { PhotoViewer(photo, name.ifBlank { "Item" }) { viewing = false } }
+    ZDialog(if (isNew) "Add to stock" else "Edit stock item", cancel,
         confirm = "Save" to {
             if (name.isNotBlank()) {
                 val base = m.copy(name = name.trim(), spec = spec.trim(), unit = unit.trim().ifBlank { "ea" },
-                    alertLevel = alert.toNum(), cost = cost.toNum(), location = location.trim().ifBlank { "Truck" })
+                    alertLevel = alert.toNum(), cost = cost.toNum(), location = location.trim().ifBlank { "Truck" }, photoPath = photo)
+                if (m.photoPath.isNotBlank() && m.photoPath != photo) vm.discardItemPhoto(m.photoPath)
                 if (isNew) vm.saveMaterial(base.copy(onHand = onHand.toNum()))
                 else {
                     val moves = buildList {
@@ -176,9 +195,19 @@ fun MaterialDialog(vm: AppViewModel, m: Material, onClose: () -> Unit) {
                 onClose()
             }
         },
-        dismiss = (if (isNew) "Cancel" else "Delete") to { if (isNew) onClose() else confirmDelete = true }) {
+        dismiss = (if (isNew) "Cancel" else "Delete") to { if (isNew) cancel() else confirmDelete = true }) {
         androidx.compose.foundation.lazy.LazyColumn {
             item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ItemThumb(photo, 84.dp, onClick = { if (photo.isNotBlank()) viewing = true else snap() })
+                    Spacer(Modifier.width(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Label(if (photo.isBlank()) "Snap photo" else "Retake photo", color = Z.neon, modifier = Modifier.clickable { snap() }.padding(vertical = 4.dp))
+                        if (photo.isNotBlank()) Label("Remove photo", color = Z.warn, modifier = Modifier.clickable { photo = "" }.padding(vertical = 4.dp))
+                        else Text("Your own photo of the item, so you know it at a glance.", color = Z.muted, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
                 Field("Name (e.g. 12/2 NM-B)", name, { name = it; nameLocked = false })
                 if (isNew && !nameLocked && name.trim().length >= 2) {
                     val sugg = Catalog.search(name, 5).filter { !it.name.equals(name.trim(), true) }

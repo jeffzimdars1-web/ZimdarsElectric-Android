@@ -1,6 +1,7 @@
 package com.zimdarselectric.app.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -58,6 +59,8 @@ data class Material(
     /** What one unit costs you, including the sales tax you paid at the store. */
     val cost: Double = 0.0,
     val location: String = "Truck",
+    /** Your own photo of the item, stored on the phone. Blank = no photo yet. */
+    @ColumnInfo(defaultValue = "") val photoPath: String = "",
 )
 
 @Entity
@@ -254,9 +257,16 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+/** Version 3 adds a photo to each stock item. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Material` ADD COLUMN `photoPath` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -266,7 +276,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build().also { instance = it }
         }
     }

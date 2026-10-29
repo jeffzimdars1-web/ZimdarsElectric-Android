@@ -122,9 +122,10 @@ private fun Stat(value: String, label: String, color: Color, modifier: Modifier)
 }
 
 @Composable
-fun ListRow(title: String, sub: String, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
+fun ListRow(title: String, sub: String, onClick: (() -> Unit)? = null, photo: String = "", trailing: @Composable () -> Unit = {}) {
     Column(if (onClick != null) Modifier.clickable { onClick() } else Modifier) {
         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (photo.isNotBlank()) { ItemThumb(photo, 44.dp); Spacer(Modifier.width(12.dp)) }
             Column(Modifier.weight(1f)) {
                 Text(title, color = Z.text, fontSize = 17.sp)
                 Spacer(Modifier.height(3.dp))

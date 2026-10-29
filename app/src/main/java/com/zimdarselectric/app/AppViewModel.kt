@@ -57,7 +57,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveMaterial(m: Material, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
         if (m.id == 0L) onSaved(dao.insertMaterial(m)) else { dao.updateMaterial(m); onSaved(m.id) }
     }
-    fun deleteMaterial(m: Material) = viewModelScope.launch { dao.deleteMaterial(m) }
+    fun deleteMaterial(m: Material) = viewModelScope.launch {
+        if (m.photoPath.isNotBlank()) java.io.File(m.photoPath).delete()
+        dao.deleteMaterial(m)
+    }
+
+    // ---------- Item photos ----------
+    private fun itemDir() = java.io.File(app.filesDir, "items").apply { mkdirs() }
+
+    /** A new file the camera writes an item photo into. */
+    fun newItemPhotoFile(): java.io.File = java.io.File(itemDir(), "item_${System.currentTimeMillis()}.jpg")
+
+    /** Shrinks a fresh camera photo (often 4+ MB) to about 1600 px so hundreds of items fit easily. */
+    fun shrinkItemPhoto(f: java.io.File, onDone: (Boolean) -> Unit) = viewModelScope.launch {
+        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                if (!f.exists() || f.length() == 0L) return@runCatching false
+                val b = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(f.path, b)
+                var sample = 1
+                while (b.outWidth / (sample * 2) >= 1600 || b.outHeight / (sample * 2) >= 1600) sample *= 2
+                var bmp = android.graphics.BitmapFactory.decodeFile(f.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) ?: return@runCatching false
+                val rot = when (androidx.exifinterface.media.ExifInterface(f.path).getAttributeInt(
+                    androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION, androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL)) {
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+                if (rot != 0f) bmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(rot) }, true)
+                f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+                true
+            }.getOrDefault(false)
+        }
+        if (!ok) f.delete()
+        onDone(ok)
+    }
+
+    /** Removes a photo file that is no longer used. */
+    fun discardItemPhoto(path: String) {
+        if (path.isNotBlank()) viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { java.io.File(path).delete() }
+    }
 
     /** Save edits and any received/used amounts in one step, so nothing overwrites anything else. */
     fun saveMaterialWithMoves(m: Material, moves: List<Pair<Double, String>>) = viewModelScope.launch {

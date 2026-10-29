@@ -141,7 +141,8 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit) {
                     }
                 }
                 Column(Modifier.clickable(enabled = !locked) { editLine = l }) {
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        if (m != null && m.photoPath.isNotBlank()) { ItemThumb(m.photoPath, 36.dp); Spacer(Modifier.width(10.dp)) }
                         Text(l.name, color = Z.text, fontSize = 17.sp, modifier = Modifier.weight(1f))
                         Text(money(l.qty * l.unitCost * (1 + q.markupPct / 100)), fontFamily = Mono, fontSize = 14.sp, color = Z.text)
                     }
@@ -406,6 +407,7 @@ fun MaterialPicker(
                 ZDialog(m.name, onDismiss,
                     confirm = "Add" to { if (need > 0) { if (need > free) conflict = true else onPick(m, need) } },
                     dismiss = "Back" to { chosen = null }) {
+                    if (m.photoPath.isNotBlank()) { ItemThumb(m.photoPath, 120.dp); Spacer(Modifier.height(8.dp)) }
                     Text("${qtyText(maxOf(free, 0.0))} ${m.unit} free · ${money(m.cost)} per ${m.unit}", color = Z.muted)
                     Spacer(Modifier.height(8.dp))
                     Field("Quantity (${m.unit})", qty, { qty = it }, number = true)
@@ -424,7 +426,7 @@ fun MaterialPicker(
                 if (shown.isNotEmpty()) item { Label("Your stock", color = Z.neon) }
                 items(shown, key = { it.id }) { m ->
                     val free = m.onHand - (holdsOthers[m.id] ?: 0.0) - thisQuote.filter { it.materialId == m.id }.sumOf { it.qty }
-                    ListRow(m.name, "${qtyText(maxOf(free, 0.0))} ${m.unit} free · ${money(m.cost)}/${m.unit}", onClick = { chosen = m; qty = "1" })
+                    ListRow(m.name, "${qtyText(maxOf(free, 0.0))} ${m.unit} free · ${money(m.cost)}/${m.unit}", onClick = { chosen = m; qty = "1" }, photo = m.photoPath)
                 }
                 if (fromCatalog.isNotEmpty()) item { Spacer(Modifier.height(10.dp)); Label("From the catalog · tap to add", color = Z.neon) }
                 items(fromCatalog, key = { "c" + it.name + it.spec }) { c ->
