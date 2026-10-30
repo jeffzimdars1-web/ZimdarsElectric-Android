@@ -64,6 +64,7 @@ fun HomeScreen(vm: AppViewModel, nav: Nav) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
         item {
             Spacer(Modifier.height(22.dp))
+            NewContactsBanner(vm)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Column {
                     Title("Zimdars", 40)

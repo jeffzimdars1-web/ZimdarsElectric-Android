@@ -148,6 +148,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveCustomer(c: Customer, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
         if (c.id == 0L) onSaved(dao.insertCustomer(c)) else { dao.updateCustomer(c); onSaved(c.id) }
     }
+    // ---------- New phone contacts ----------
+    private fun digits(p: String) = p.filter(Char::isDigit).takeLast(10)
+    private val _newContacts = kotlinx.coroutines.flow.MutableStateFlow<List<com.zimdarselectric.app.data.PhoneContacts.Contact>>(emptyList())
+    /** Phone contacts that aren't customers yet and that you haven't skipped. */
+    val newContacts: StateFlow<List<com.zimdarselectric.app.data.PhoneContacts.Contact>> get() = _newContacts
+
+    /** Looks for new phone contacts. Called whenever the app opens or comes back to the front. */
+    fun refreshNewContacts() = viewModelScope.launch {
+        if (!com.zimdarselectric.app.data.PhoneContacts.allowed(app)) { _newContacts.value = emptyList(); return@launch }
+        val have = dao.customersNow()
+        val phones = have.map { digits(it.phone) }.filter { it.length >= 7 }.toSet()
+        val names = have.map { it.name.trim().lowercase() }.toSet()
+        val skipped = (dao.settingsNow()?.skippedContacts ?: "").lines().filter { it.isNotBlank() }.toSet()
+        _newContacts.value = com.zimdarselectric.app.data.PhoneContacts.all(app).filter { k ->
+            val d = digits(k.phone)
+            d !in phones && k.name.trim().lowercase() !in names && d !in skipped
+        }
+    }
+
+    fun addContact(k: com.zimdarselectric.app.data.PhoneContacts.Contact) = viewModelScope.launch {
+        dao.insertCustomer(com.zimdarselectric.app.data.PhoneContacts.toCustomer(app, k)); refreshNewContacts()
+    }
+    fun skipContact(k: com.zimdarselectric.app.data.PhoneContacts.Contact) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        dao.saveSettings(s.copy(skippedContacts = (s.skippedContacts.lines() + digits(k.phone)).filter { it.isNotBlank() }.distinct().joinToString("\n")))
+        refreshNewContacts()
+    }
+    fun addAllNewContacts(onDone: (Int) -> Unit) = viewModelScope.launch {
+        val list = _newContacts.value
+        list.forEach { dao.insertCustomer(com.zimdarselectric.app.data.PhoneContacts.toCustomer(app, it)) }
+        refreshNewContacts(); onDone(list.size)
+    }
+
     /** Copies every phone contact into Customers, skipping anyone already saved (same number or same name). */
     fun importAllContacts(onDone: (added: Int, skipped: Int) -> Unit) = viewModelScope.launch {
         val contacts = com.zimdarselectric.app.data.PhoneContacts.all(app)
@@ -162,6 +195,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             phones += p; names += k.name.trim().lowercase(); added++
         }
         onDone(added, contacts.size - added)
+        refreshNewContacts()
     }
 
     fun deleteCustomer(c: Customer) = viewModelScope.launch { dao.deleteCustomer(c) }

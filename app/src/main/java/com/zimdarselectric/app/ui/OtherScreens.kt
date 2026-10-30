@@ -329,6 +329,8 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
                 if (!importing) { importMsg = null; askContacts.launch(android.Manifest.permission.READ_CONTACTS) }
             }
             importMsg?.let { Text(it, color = Z.neon, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp)) }
+            Spacer(Modifier.height(8.dp))
+            NewContactsBanner(vm)
         }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 22.dp)) {
             val shown = customers.filter { search.isBlank() || it.name.contains(search, true) || it.address.contains(search, true) || it.phone.contains(search) }
