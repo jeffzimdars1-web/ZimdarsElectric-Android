@@ -261,6 +261,64 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.insertMove(StockMove(materialId = materialId, delta = delta, reason = reason, quoteId = quoteId))
     }
 
+    // ---------- Jobs Claude prepared (online inbox) ----------
+    private val _inboxAdded = kotlinx.coroutines.flow.MutableStateFlow<List<Pair<Long, String>>>(emptyList())
+    /** Quotes just added from the inbox: id to a short description, for the Home banner. */
+    val inboxAdded: kotlinx.coroutines.flow.StateFlow<List<Pair<Long, String>>> = _inboxAdded
+    fun dismissInbox() { _inboxAdded.value = emptyList() }
+
+    /** Picks up jobs Claude wrote up for you and adds them as quotes (or updates the quote number given). */
+    fun pullInbox() = viewModelScope.launch {
+        val s0 = dao.settingsNow() ?: return@launch
+        val items = runCatching { com.zimdarselectric.app.data.Inbox.pending(s0.signKey) }.getOrDefault(emptyList())
+        for (item in items) {
+            if (item.kind != "job") continue
+            val added = runCatching { importJob(item.data) }.getOrNull() ?: continue
+            com.zimdarselectric.app.data.Inbox.done(s0.signKey, item.id)
+            _inboxAdded.value = _inboxAdded.value + added
+        }
+    }
+
+    private suspend fun importJob(d: org.json.JSONObject): Pair<Long, String> {
+        fun digits(p: String) = p.filter(Char::isDigit).takeLast(10)
+        val c = d.optJSONObject("customer") ?: org.json.JSONObject()
+        val qo = d.optJSONObject("quote") ?: org.json.JSONObject()
+        val name = c.optString("name").trim()
+        val phone = c.optString("phone").trim()
+        val site = qo.optString("site").trim()
+        // Customer: match by phone, then name; otherwise add them.
+        var cust = dao.customersNow().firstOrNull { (phone.isNotBlank() && digits(it.phone) == digits(phone)) } ?: dao.customersNow().firstOrNull { name.isNotBlank() && it.name.equals(name, true) }
+        if (cust == null && name.isNotBlank()) {
+            val nc = Customer(name = name, phone = phone, email = c.optString("email"), address = c.optString("address").ifBlank { site })
+            cust = nc.copy(id = dao.insertCustomer(nc))
+        }
+        if (cust != null && site.isNotBlank() && cust.allProperties.none { it.address.equals(site, true) }) {
+            cust = if (cust.address.isBlank()) cust.copy(address = site)
+                   else cust.withProperties(cust.otherProperties + Customer.Property(c.optString("propertyLabel"), site))
+            dao.updateCustomer(cust)
+        }
+        // Quote: update the one with this number, or make a new one.
+        val number = qo.optString("number").trim()
+        val existing = if (number.isNotBlank()) dao.quotesNow().firstOrNull { it.number.equals(number, true) } else null
+        val s = dao.settingsNow() ?: Settings()
+        val base = existing ?: Quote(number = "Q-" + s.nextQuoteNo.toString().padStart(4, '0'), laborRate = s.laborRate, markupPct = s.markupPct, taxRatePct = s.repairTaxPct)
+        val q = com.zimdarselectric.app.data.Inbox.applyQuote(base, qo).copy(customerId = cust?.id ?: base.customerId, customerName = cust?.name ?: base.customerName)
+        val id = if (existing != null) { dao.updateQuote(q); existing.id } else { val nid = dao.insertQuote(q); dao.saveSettings(s.copy(nextQuoteNo = s.nextQuoteNo + 1)); nid }
+        // Materials (added to what's there; matched to your stock by name).
+        val lines = d.optJSONArray("lines")
+        if (lines != null && lines.length() > 0) {
+            fun norm(x: String) = x.lowercase().replace(Regex("[^a-z0-9/.]+"), " ").trim()
+            val stock = dao.materialsNow()
+            for (i in 0 until lines.length()) {
+                val l = lines.getJSONObject(i)
+                val m = stock.firstOrNull { norm(it.name) == norm(l.optString("name")) }
+                dao.insertLine(QuoteLine(quoteId = id, materialId = m?.id, name = m?.name ?: l.optString("name"), unit = l.optString("unit", m?.unit ?: "ea"),
+                    qty = l.optDouble("qty", 1.0), unitCost = if (l.has("unitCost")) l.getDouble("unitCost") else m?.cost ?: 0.0, repair = l.optBoolean("repair")))
+            }
+        }
+        return id to "${q.number} · ${q.customerName.ifBlank { q.title }}"
+    }
+
     // ---------- Quotes ----------
     fun newQuote(onCreated: (Long) -> Unit) = viewModelScope.launch {
         val s = dao.settingsNow() ?: Settings()

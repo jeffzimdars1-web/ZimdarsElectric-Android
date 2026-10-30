@@ -87,7 +87,7 @@ class Nav {
 fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () -> Unit = {}) {
     val nav = remember { Nav() }
     // Look for new phone contacts once, when the app starts up.
-    androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshNewContacts() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshNewContacts(); vm.pullInbox() }
     androidx.compose.runtime.LaunchedEffect(openQuote) {
         if (openQuote != null) { nav.goTab(Tab.QUOTES); nav.open(Page.EditQuote(openQuote)); onOpened() }
     }

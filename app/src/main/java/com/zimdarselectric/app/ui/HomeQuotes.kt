@@ -65,6 +65,7 @@ fun HomeScreen(vm: AppViewModel, nav: Nav) {
         item {
             Spacer(Modifier.height(22.dp))
             NewContactsBanner(vm)
+            InboxBanner(vm, nav)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Column {
                     Title("Zimdars", 40)
@@ -180,4 +181,24 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
             }
         }
     }
+}
+
+
+/** "Claude added Q-0014 · Pauly" after jobs come in from the online inbox. */
+@Composable
+fun InboxBanner(vm: AppViewModel, nav: Nav) {
+    val added by vm.inboxAdded.collectAsState()
+    if (added.isEmpty()) return
+    Column(Modifier.fillMaxWidth().background(Z.neonTint).padding(14.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Label("Added for you", color = Z.neon)
+            Label("Dismiss", modifier = Modifier.clickable { vm.dismissInbox() })
+        }
+        added.forEach { (id, text) ->
+            Text("$text →", color = Z.text, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().clickable {
+                nav.goTab(Tab.QUOTES); nav.open(Page.EditQuote(id))
+            }.padding(vertical = 6.dp))
+        }
+    }
+    Spacer(Modifier.height(12.dp))
 }
