@@ -2,6 +2,7 @@ package com.zimdarselectric.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,8 @@ fun statusColor(s: String): Color = when (s) {
 
 @Composable
 fun HomeScreen(vm: AppViewModel, nav: Nav) {
+    var deleting by remember { mutableStateOf<Quote?>(null) }
+    DeleteQuoteDialog(vm, deleting) { deleting = null }
     val quotes by vm.quotes.collectAsState()
     val materials by vm.materials.collectAsState()
     val holds by vm.holds.collectAsState()
@@ -113,7 +116,7 @@ fun HomeScreen(vm: AppViewModel, nav: Nav) {
         }
         items(quotes.take(5), key = { "q${it.id}" }) { q ->
             ListRow(q.title.ifBlank { "Untitled job" }, "${q.number} · ${q.customerName.ifBlank { "No customer" }}".uppercase(),
-                onClick = { nav.open(Page.EditQuote(q.id)) }) { StatusDot(q.status, statusColor(q.status)) }
+                onClick = { nav.open(Page.EditQuote(q.id)) }, onLongClick = { deleting = q }) { StatusDot(q.status, statusColor(q.status)) }
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
@@ -128,8 +131,16 @@ private fun Stat(value: String, label: String, color: Color, modifier: Modifier)
 }
 
 @Composable
-fun ListRow(title: String, sub: String, onClick: (() -> Unit)? = null, photo: String = "", trailing: @Composable () -> Unit = {}) {
-    Column(if (onClick != null) Modifier.clickable { onClick() } else Modifier) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun ListRow(title: String, sub: String, onClick: (() -> Unit)? = null, photo: String = "", onLongClick: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Column(when {
+        onLongClick != null -> Modifier.combinedClickable(onClick = { onClick?.invoke() }, onLongClick = {
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLongClick()
+        })
+        onClick != null -> Modifier.clickable { onClick() }
+        else -> Modifier
+    }) {
         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (photo.isNotBlank()) { ItemThumb(photo, 44.dp); Spacer(Modifier.width(12.dp)) }
             Column(Modifier.weight(1f)) {
@@ -146,6 +157,8 @@ fun ListRow(title: String, sub: String, onClick: (() -> Unit)? = null, photo: St
 
 @Composable
 fun QuotesScreen(vm: AppViewModel, nav: Nav) {
+    var deleting by remember { mutableStateOf<Quote?>(null) }
+    DeleteQuoteDialog(vm, deleting) { deleting = null }
     val quotes by vm.quotes.collectAsState()
     val lines by vm.lines.collectAsState()
     val settings by vm.settings.collectAsState()
@@ -179,7 +192,7 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
                 val t = computeTotals(q, lines.filter { it.quoteId == q.id }, settings)
                 ListRow(q.title.ifBlank { "Untitled job" }, ("${q.number} · ${q.customerName.ifBlank { "No customer" }} · ${money(t.total)}" +
                     (q.startAt?.let { " · " + java.text.SimpleDateFormat(if (q.hasTime) "EEE MMM d, h:mm a" else "EEE MMM d", java.util.Locale.US).format(java.util.Date(it)) } ?: "")).uppercase(),
-                    onClick = { nav.open(Page.EditQuote(q.id)) }) {
+                    onClick = { nav.open(Page.EditQuote(q.id)) }, onLongClick = { deleting = q }) {
                     if (q.kind == com.zimdarselectric.app.data.Kind.APPT) StatusDot("Appt", Z.info) else StatusDot(q.status, statusColor(q.status))
                 }
             }
@@ -205,4 +218,23 @@ fun InboxBanner(vm: AppViewModel, nav: Nav) {
         }
     }
     Spacer(Modifier.height(12.dp))
+}
+
+
+/** Hold a quote in a list to delete it. Same as Delete at the bottom of the quote. */
+@Composable
+fun DeleteQuoteDialog(vm: AppViewModel, q: Quote?, onClose: () -> Unit) {
+    q ?: return
+    val appt = q.kind == com.zimdarselectric.app.data.Kind.APPT
+    val what = if (appt) "appointment" else "quote"
+    ZDialog("Delete ${q.number}?", onClose,
+        confirm = "Delete" to { vm.deleteQuote(q); onClose() }, dismiss = "Keep" to onClose) {
+        Text(q.title.ifBlank { "Untitled job" } + if (q.customerName.isNotBlank()) " · ${q.customerName}" else "", color = Z.text)
+        Spacer(Modifier.height(6.dp))
+        Text(when {
+            q.status == Status.DONE && q.paidAt != null -> "This job is done and paid. Deleting it takes its income out of your books. Only delete it if it was a mistake."
+            appt -> "Its reminders will stop too."
+            else -> "This removes the $what and releases any stock it was holding."
+        }, color = if (q.status == Status.DONE && q.paidAt != null) Z.warn else Z.muted)
+    }
 }

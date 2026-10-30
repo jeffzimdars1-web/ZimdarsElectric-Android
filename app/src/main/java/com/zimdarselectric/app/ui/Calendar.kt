@@ -5,6 +5,7 @@ import android.provider.CalendarContract
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -192,7 +193,11 @@ fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>,
         val t = computeTotals(q, lines.filter { it.quoteId == q.id }, settings)
         val start = q.startAt!!.toLocal()
         val end = start.plusMinutes((q.blockHours * 60).toLong())
-        Row(Modifier.fillMaxWidth().clickable { nav.open(Page.EditQuote(q.id)) }.padding(vertical = 12.dp)) {
+        var deleting by remember { mutableStateOf(false) }
+        if (deleting) DeleteQuoteDialog(vm, q) { deleting = false }
+        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+        val press = Modifier.combinedClickable(onClick = { nav.open(Page.EditQuote(q.id)) }, onLongClick = { deleting = true })
+        Row(Modifier.fillMaxWidth().then(press).padding(vertical = 12.dp)) {
             Column(Modifier.width(78.dp)) {
                 Text(if (q.hasTime) start.format(timeFmt) else "Any time", color = Z.text, fontFamily = Condensed, fontSize = 18.sp)
                 if (q.hasTime && q.blockHours > 0) Label("to ${end.format(timeFmt)}")
