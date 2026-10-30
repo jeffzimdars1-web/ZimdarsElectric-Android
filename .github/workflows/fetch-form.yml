@@ -1,0 +1,28 @@
+name: Fetch tax form
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -sSL -A "Mozilla/5.0" -o st124.pdf https://www.tax.ny.gov/pdf/current_forms/st/st124_fill_in.pdf
+          file st124.pdf; ls -la st124.pdf
+          pip install pypdf >/dev/null
+          python3 - <<'PY' > st124-fields.txt
+          from pypdf import PdfReader
+          r = PdfReader("st124.pdf")
+          print("pages", len(r.pages))
+          for i, p in enumerate(r.pages):
+              print("page", i, p.mediabox)
+              for a in p.get("/Annots") or []:
+                  a = a.get_object()
+                  if a.get("/Subtype") == "/Widget":
+                      name = a.get("/T") or (a.get("/Parent") or {}).get("/T")
+                      print(i, repr(name), a.get("/FT") or (a.get("/Parent") or {}).get("/FT"), [round(float(x)) for x in a.get("/Rect")], a.get("/TU"), a.get("/AP", {}).get("/N", {}).keys() if a.get("/FT") == "/Btn" or (a.get("/Parent") or {}).get("/FT") == "/Btn" else "")
+          PY
+          cat st124-fields.txt
+          zip form.zip st124.pdf st124-fields.txt
+          gh release upload ci-preview form.zip --clobber -R ${{ github.repository }}
+        env: { GH_TOKEN: "${{ github.token }}" }
