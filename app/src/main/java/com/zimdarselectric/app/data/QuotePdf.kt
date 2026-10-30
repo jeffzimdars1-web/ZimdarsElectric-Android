@@ -100,8 +100,9 @@ object QuotePdf {
             y += after
         }
 
-        fun section(title: String) {
-            need(40f)
+        /** Section heading; [keep] is how much room the start of the section needs, so a heading never sits alone at a page bottom. */
+        fun section(title: String, keep: Float = 40f) {
+            need(keep + 31f)
             y += 8f
             c.drawText(title.uppercase(), M, y + 10f, h2)
             y += 15f
@@ -229,7 +230,6 @@ object QuotePdf {
                 continuing = null
             }
 
-            section("Price")
             val rows = buildList {
                 if (q.jobType == JobType.BOTH) {
                     val instMat = lines.filter { !it.repair }.sumOf { it.qty * it.unitCost } * factor
@@ -247,7 +247,7 @@ object QuotePdf {
                     if (q.jobType == JobType.REPAIR) add("Sales tax (${qtyText(q.taxRatePct)}%)" to money(t.salesTax))
                 }
             }
-            need(rows.size * 15f + 34f)
+            section("Price", rows.size * 15f + 40f)
             val lx = W - M - 220f
             rows.forEach { (k, v) -> c.drawText(k, lx, y + 9f, body); c.drawText(v, W - M, y + 9f, body.right()); y += 15f }
             c.drawRect(lx, y + 2f, W - M, y + 3.5f, Paint().apply { color = Color.BLACK })
@@ -271,7 +271,7 @@ object QuotePdf {
             SignService.contractNotices(s).forEach { para(it, small, after = 4f) }
 
             // Signature
-            section(if (signed) "Signed" else "Approval")
+            section(if (signed) "Signed" else "Approval", 110f)
             if (signed) {
                 val sig = q.signaturePath.takeIf { it.isNotBlank() }?.let { BitmapFactory.decodeFile(it) }
                 val sh = if (sig != null) minOf(70f, 220f * sig.height / sig.width) else 0f

@@ -39,8 +39,10 @@ object St124Pdf {
 
     /** What goes in "Describe capital improvement": the install work only. */
     fun description(q: Quote): String =
-        listOf(q.title.trim(), q.notes.trim()).filter { it.isNotBlank() }.joinToString(". ")
-            .replace(Regex("\\s*\\n\\s*[-•]?\\s*"), "; ").replace(Regex(";\\s*;"), ";").trim().trimStart(';', ' ')
+        (listOf(q.title) + q.notes.lines())
+            .map { it.trim().trimStart('-', '•', '*', ' ').trim().trimEnd('.', ';', ',') }
+            .filter { it.isNotBlank() && !it.startsWith("Customer supplied", true) }
+            .joinToString("; ").let { if (it.isBlank()) it else "$it." }
 
     fun make(
         ctx: Context, q: Quote, customer: Customer?, s: Settings,
