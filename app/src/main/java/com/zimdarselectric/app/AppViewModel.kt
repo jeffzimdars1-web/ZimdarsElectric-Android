@@ -286,7 +286,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** After the visit: turn the appointment into a quote, keeping customer, address, date and notes. */
     fun appointmentToQuote(q: Quote) = viewModelScope.launch {
-        dao.quote(q.id)?.let { dao.updateQuote(it.copy(kind = com.zimdarselectric.app.data.Kind.QUOTE, title = if (it.title == "Service call") "" else it.title, updatedAt = System.currentTimeMillis())) }
+        dao.quote(q.id)?.let {
+            // The confirmation link belongs to the appointment; the quote gets its own signing link later.
+            dao.updateQuote(it.copy(kind = com.zimdarselectric.app.data.Kind.QUOTE, title = if (it.title == "Service call") "" else it.title,
+                signToken = "", signUrl = "", sentAt = null, viewedAt = null, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    /**
+     * Sends the appointment confirmation: makes (or replaces) the confirmation page link and texts it to the customer
+     * from this phone. [onDone] gets (link, error, texted).
+     */
+    fun sendAppointment(q: Quote, onDone: (url: String?, error: String?, texted: Boolean) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        if (s.signKey.isBlank()) { onDone(null, "Add your signing key in Settings first.", false); return@launch }
+        val cur = dao.quote(q.id) ?: return@launch
+        val c = cur.customerId?.let { dao.customer(it) }
+        try {
+            val link = SignService.create(s.signKey.trim(), SignService.apptPayload(cur, c, s), cur.number,
+                cur.signToken.takeIf { it.isNotBlank() }, kind = "appt")
+            val now = System.currentTimeMillis()
+            val latest = dao.quote(q.id) ?: return@launch
+            dao.updateQuote(latest.copy(signToken = link.token, signUrl = link.url, sentAt = now, updatedAt = now, viewedAt = null, confirmedAt = null))
+            SignService.scheduleBackgroundCheck(app)
+            val texted = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.zimdarselectric.app.data.CustomerTexts.sendText(app, latest, c, com.zimdarselectric.app.data.CustomerTexts.confirmation(latest, s, link.url))
+            }
+            onDone(link.url, null, texted)
+        } catch (e: Exception) { onDone(null, friendly(e), false) }
     }
 
     // ---------- GPS: on my way, job clock, mileage ----------

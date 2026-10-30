@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Appointment confirmation</title>
+<style>
+  :root {
+    --ink: #1c1f21; --muted: #5d656b; --line: #d9dde0; --paper: #ffffff; --wash: #f3f4f5;
+    --band: #1c1f21; --neon: #dcff34; --ok: #2e8f5b; --warn: #c2410c;
+    --cond: "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--wash); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .sheet { max-width: 680px; margin: 0 auto; background: var(--paper); min-height: 100vh; }
+  header { background: var(--band); color: #f2f3f3; padding: 22px 20px 18px; border-bottom: 4px solid var(--neon); }
+  header h1 { margin: 0; font: 700 26px/1.1 var(--cond); letter-spacing: .5px; text-transform: uppercase; }
+  header .contact { margin-top: 6px; font-size: 13px; color: #c9cdd0; }
+  main { padding: 6px 20px 40px; }
+  .kicker { font: 600 11px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+  h2 { font: 700 15px/1.2 var(--cond); text-transform: uppercase; letter-spacing: 1px; margin: 26px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .doc { font: 700 26px/1 var(--cond); text-transform: uppercase; }
+  .when { margin-top: 18px; border: 2px solid var(--ink); padding: 16px; display: grid; gap: 4px; }
+  .when .day { font: 700 28px/1.1 var(--cond); }
+  .when .time { font-size: 18px; font-weight: 600; }
+  .when .window { color: var(--muted); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+  .muted { color: var(--muted); }
+  .note { background: var(--wash); border-left: 3px solid var(--ink); padding: 10px 12px; font-size: 14px; margin: 10px 0; }
+  ul { margin: 6px 0 0; padding-left: 20px; } li { margin: 4px 0; }
+  button, .btn { font: 700 16px var(--cond); text-transform: uppercase; letter-spacing: 1px; border: 0; cursor: pointer; text-decoration: none; display: block; text-align: center; }
+  .btn-main { background: var(--ink); color: var(--neon); padding: 16px 20px; width: 100%; margin-top: 18px; }
+  .btn-main[disabled] { opacity: .5; }
+  .btn-line { border: 1.5px solid var(--ink); color: var(--ink); background: var(--paper); padding: 13px 14px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .confirmed { border: 2px solid var(--ok); padding: 14px 16px; margin-top: 18px; }
+  .confirmed .badge { color: var(--ok); font: 700 22px var(--cond); text-transform: uppercase; }
+  .err { color: var(--warn); font-weight: 600; margin-top: 10px; min-height: 1em; }
+  .center { padding: 60px 20px; text-align: center; }
+  .small { font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="sheet"><div id="app"><div class="center muted">Loading your appointment…</div></div></div>
+<script>
+(function () {
+  "use strict";
+  var API = "https://dmaslbfwpsfnnnyushbc.supabase.co/functions/v1/sign";
+  var TZ = "America/New_York";
+  var token = new URLSearchParams(location.search).get("t") || "";
+  var app = document.getElementById("app");
+
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") e.textContent = attrs[k]; else if (k === "cls") e.className = attrs[k]; else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function fmt(ms, opts) { return new Date(ms).toLocaleString("en-US", Object.assign({ timeZone: TZ }, opts)); }
+  function message(title, body) { app.innerHTML = ""; app.appendChild(el("div", { cls: "center" }, [el("h2", { text: title }), el("p", { cls: "muted", text: body })])); }
+  function digits(p) { return (p || "").replace(/[^\d+]/g, ""); }
+
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) { message("Link not valid", "Please use the full link from your text or email."); return; }
+  fetch(API + "?t=" + encodeURIComponent(token), { cache: "no-store" })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok || res.j.kind !== "appt") { message("Appointment not found", "This link may be wrong or the appointment was removed. Please contact us."); return; }
+      render(res.j);
+    })
+    .catch(function () { message("Can't load your appointment", "Check your connection and open the link again."); });
+
+  // ---- Calendar ----
+  function utcStamp(ms) { return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""); }
+  function dayStamp(ms) { var p = fmt(ms, { year: "numeric", month: "2-digit", day: "2-digit" }).split("/"); return p[2] + p[0] + p[1]; }
+  function icsText(a, b) {
+    var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Zimdars Electric//Appointment//EN", "BEGIN:VEVENT",
+      "UID:" + token + "@zimdarselectric", "DTSTAMP:" + utcStamp(Date.now())];
+    if (a.hasTime) { lines.push("DTSTART:" + utcStamp(a.start), "DTEND:" + utcStamp(a.start + 3600000)); }
+    else { var d = dayStamp(a.start); lines.push("DTSTART;VALUE=DATE:" + d, "DTEND;VALUE=DATE:" + dayStamp(a.start + 86400000)); }
+    var esc = function (s) { return String(s || "").replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/;/g, "\\;").replace(/\n/g, "\\n"); };
+    lines.push("SUMMARY:" + esc((b.name || "Electrician") + " appointment"), "LOCATION:" + esc(a.site),
+      "DESCRIPTION:" + esc((a.reason ? "Reason: " + a.reason + "\n" : "") + (b.phone ? "Contact: " + b.phone : "")),
+      "BEGIN:VALARM", "TRIGGER:-PT1H", "ACTION:DISPLAY", "DESCRIPTION:Electrician appointment", "END:VALARM", "END:VEVENT", "END:VCALENDAR");
+    return lines.join("\r\n");
+  }
+  function addToCalendar(a, b) {
+    var ics = icsText(a, b);
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) { location.href = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics); return; }
+    var url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+    var link = el("a", { href: url, download: "appointment.ics" }); document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function googleLink(a, b) {
+    var dates = a.hasTime ? utcStamp(a.start) + "/" + utcStamp(a.start + 3600000) : dayStamp(a.start) + "/" + dayStamp(a.start + 86400000);
+    return "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encodeURIComponent((b.name || "Electrician") + " appointment") +
+      "&dates=" + dates + "&location=" + encodeURIComponent(a.site || "") + "&details=" + encodeURIComponent(a.reason || "");
+  }
+
+  function render(d) {
+    var p = d.payload || {}, b = p.business || {}, c = p.customer || {}, a = p.appt || {}, terms = p.terms || {};
+    document.title = (b.name || "Appointment") + " · Appointment confirmation";
+    app.innerHTML = "";
+    var lic = [b.license ? "License " + b.license : "", b.insurer ? "Insured: " + b.insurer : ""].filter(Boolean).join(" · ");
+    app.appendChild(el("header", null, [
+      el("h1", { text: b.name || "Appointment" }),
+      el("div", { cls: "contact", text: [b.phone, b.email, b.address].filter(Boolean).join(" · ") }),
+      lic ? el("div", { cls: "contact", text: lic }) : null,
+    ]));
+    var m = el("main"); app.appendChild(m);
+
+    m.appendChild(el("div", { cls: "title-row" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "Appointment confirmation" }), el("div", { cls: "doc", text: "Service visit" })]),
+      el("div", { cls: "muted small", style: "text-align:right" }, [el("div", { text: "Ref. " + (a.number || d.quote_number) }), c.name ? el("div", { text: "For " + c.name }) : null]),
+    ]));
+
+    if (d.status === "canceled") {
+      m.appendChild(el("div", { cls: "note", text: "This appointment was changed or canceled, so this confirmation is no longer current. Please check for a newer message from us, or call " + (b.phone || "us") + "." }));
+    }
+
+    var when = el("div", { cls: "when" });
+    if (a.start) {
+      when.appendChild(el("div", { cls: "kicker", text: "Date and time" }));
+      when.appendChild(el("div", { cls: "day", text: fmt(a.start, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) }));
+      if (a.hasTime) {
+        when.appendChild(el("div", { cls: "time", text: "Arrival at " + fmt(a.start, { hour: "numeric", minute: "2-digit" }) }));
+        if (a.windowMin > 0) when.appendChild(el("div", { cls: "window", text: "Arrival window " + fmt(a.start - a.windowMin * 60000, { hour: "numeric", minute: "2-digit" }) + " to " +
+          fmt(a.start + a.windowMin * 60000, { hour: "numeric", minute: "2-digit" }) + ", allowing for weather and traffic." }));
+      } else when.appendChild(el("div", { cls: "time", text: "Arrival time to be confirmed. We'll text you when we're on the way." }));
+    } else when.appendChild(el("div", { cls: "time", text: "Date to be scheduled together." }));
+    m.appendChild(when);
+
+    m.appendChild(el("h2", { text: "Visit details" }));
+    m.appendChild(el("div", { cls: "grid" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "Service address" }), el("div", { text: a.site || "To be confirmed" })]),
+      el("div", null, [el("div", { cls: "kicker", text: "Technician" }), el("div", { text: [b.owner, b.name].filter(Boolean).join(", ") })]),
+      a.reason ? el("div", { style: "grid-column:1/-1" }, [el("div", { cls: "kicker", text: "Reason for visit" }), el("div", { text: a.reason })]) : null,
+    ]));
+
+    m.appendChild(el("h2", { text: "What to expect" }));
+    m.appendChild(el("ul", null, [
+      el("li", { text: "We'll look at the problem and explain what we find." }),
+      el("li", { text: "Any repair is priced before work starts. Nothing is done without your OK." }),
+      el("li", { text: "Please make sure someone 18 or older is home, and that we can reach the electrical panel." }),
+    ]));
+    if (terms.rates) { m.appendChild(el("h2", { text: "Service call terms" })); m.appendChild(el("p", { text: terms.rates })); }
+
+    var actions = el("div");
+    m.appendChild(actions);
+    function showActions(status, confirmedAt) {
+      actions.innerHTML = "";
+      if (status === "confirmed") {
+        actions.appendChild(el("div", { cls: "confirmed" }, [
+          el("div", { cls: "badge", text: "✓ Appointment confirmed" }),
+          el("div", { cls: "muted small", text: "Confirmed " + fmt(Date.parse(confirmedAt) || Date.now(), { dateStyle: "long", timeStyle: "short" }) + ". Thank you. We'll send a reminder the evening before." }),
+        ]));
+      } else if (status === "sent") {
+        var err = el("div", { cls: "err", role: "alert" });
+        var btn = el("button", { cls: "btn-main", type: "button", text: "Confirm appointment" });
+        btn.addEventListener("click", function () {
+          btn.disabled = true; btn.textContent = "Confirming…"; err.textContent = "";
+          fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "confirm", t: token }) })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+              if (res.ok) { showActions("confirmed", res.j.confirmed_at); return; }
+              if (res.j.error === "canceled") { err.textContent = "This appointment was changed. Please check for a newer message from us."; return; }
+              throw new Error();
+            })
+            .catch(function () { err.textContent = "Couldn't confirm. Check your connection and try again."; })
+            .finally(function () { if (btn.isConnected) { btn.disabled = false; btn.textContent = "Confirm appointment"; } });
+        });
+        actions.appendChild(btn); actions.appendChild(err);
+      }
+      if (status !== "canceled" && a.start) {
+        var cal = el("button", { cls: "btn btn-line", type: "button", text: "Add to calendar" });
+        cal.addEventListener("click", function () { addToCalendar(a, b); });
+        var g = el("a", { cls: "btn btn-line", href: googleLink(a, b), target: "_blank", rel: "noopener", text: "Google Calendar" });
+        actions.appendChild(el("div", { cls: "row" }, [cal, g]));
+      }
+      if (b.phone) {
+        actions.appendChild(el("h2", { text: "Need to reschedule?" }));
+        actions.appendChild(el("p", { cls: "small" }, ["Call or text " + b.phone + " and we'll find a time that works."]));
+        actions.appendChild(el("div", { cls: "row" }, [
+          el("a", { cls: "btn btn-line", href: "tel:" + digits(b.phone), text: "Call" }),
+          el("a", { cls: "btn btn-line", href: "sms:" + digits(b.phone), text: "Text" }),
+        ]));
+      }
+    }
+    showActions(d.status, d.confirmed_at);
+  }
+})();
+</script>
+</body>
+</html>

@@ -118,6 +118,8 @@ data class Quote(
     @ColumnInfo(defaultValue = "QUOTE") val kind: String = Kind.QUOTE,
     /** Text the customer a reminder the evening before and an hour before (from your phone). */
     @ColumnInfo(defaultValue = "0") val textCustomer: Boolean = false,
+    /** When the customer tapped "Confirm appointment" on the confirmation page. */
+    val confirmedAt: Long? = null,
     /** Where the job is, for arrival and the map (from the address). */
     val siteLat: Double? = null,
     val siteLon: Double? = null,
@@ -131,7 +133,7 @@ data class Quote(
 ) {
     /** Hours to block on the calendar. */
     val blockHours: Double get() = if (hoursOnSite > 0) hoursOnSite else laborHours
-    val awaitingSignature: Boolean get() = signToken.isNotBlank() && signedAt == null
+    val awaitingSignature: Boolean get() = signToken.isNotBlank() && signedAt == null && confirmedAt == null
     /** Edited after the link went out, so the customer is looking at an older version. */
     val changedSinceSent: Boolean get() = sentAt != null && updatedAt > sentAt + 1500
 }
@@ -290,7 +292,7 @@ interface AppDao {
     @Query("SELECT * FROM Quote")
     suspend fun quotesNow(): List<Quote>
 
-    @Query("SELECT * FROM Quote WHERE signToken != '' AND signedAt IS NULL")
+    @Query("SELECT * FROM Quote WHERE signToken != '' AND signedAt IS NULL AND confirmedAt IS NULL")
     suspend fun quotesAwaitingSignature(): List<Quote>
 
     @Query("SELECT * FROM Customer WHERE id = :id")
@@ -390,6 +392,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 16 adds appointment confirmations. */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `confirmedAt` INTEGER")
+    }
+}
+
 /** Version 15 remembers phone contacts you chose not to add. */
 val MIGRATION_14_15 = object : Migration(14, 15) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -471,7 +480,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -481,7 +490,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                 .build().also { instance = it }
         }
     }

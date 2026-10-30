@@ -41,7 +41,7 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
     var sending by remember { mutableStateOf(false) }
     var sendNote by remember { mutableStateOf<String?>(null) }
     val askSms = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
-        sendNote = if (ok) "Texting is on. Tap the button again to send." else "Texting is blocked. Use \"Open in Messages\", or allow SMS in the app's settings."
+        sendNote = if (ok) "Texting is on. Tap Send confirmation again." else "Texting is blocked. Allow SMS for the app in your phone's Settings → Apps → Zimdars Electric."
     }
     fun save(n: Quote) = vm.saveQuote(n)
 
@@ -81,35 +81,61 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
             SchedulePicker(q, customer, settings) { save(it) }
             DriveSection(vm, q)
 
-            SectionHeader("03", "Send to customer", q.sentAt?.let { "Sent " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it)) })
-            val booking = com.zimdarselectric.app.data.CustomerTexts.booking(q, customer, settings)
-            Column(Modifier.fillMaxWidth().background(Z.raised).padding(12.dp)) {
-                Label("They'll get this text")
-                Spacer(Modifier.height(4.dp))
-                Text(booking, color = Z.text, fontSize = 14.sp)
-            }
+            SectionHeader("03", "Confirmation for the customer")
+            Text("Sends a link to a formal confirmation page with your letterhead: date, arrival window, address, reason for the visit and your service call terms. They tap Confirm, and can add it to their calendar.",
+                color = Z.muted, fontSize = 13.sp)
             Spacer(Modifier.height(10.dp))
+            val dayFmt = java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.US)
+            when {
+                q.confirmedAt != null -> StatusDot("Confirmed by customer · ${dayFmt.format(java.util.Date(q.confirmedAt))}", Z.ok)
+                q.sentAt != null && q.signUrl.isNotBlank() -> {
+                    StatusDot("Sent ${dayFmt.format(java.util.Date(q.sentAt))}", Z.info)
+                    Label(q.viewedAt?.let { "Opened ${dayFmt.format(java.util.Date(it))} · waiting for them to confirm" } ?: "Not opened yet")
+                }
+            }
+            if (q.sentAt != null && q.changedSinceSent && q.signUrl.isNotBlank())
+                Text("You changed the appointment after sending it. Send an updated confirmation so they see the new details.", color = Z.warn, fontSize = 13.sp)
+            Spacer(Modifier.height(8.dp))
             val phone = customer?.phone.orEmpty()
-            if (phone.isBlank()) Text("Add the customer's cell number (tap Customer above, or More → Customers) to send it.", color = Z.warn, fontSize = 13.sp)
-            else {
-                NeonButton(when { sending -> "Sending…"; q.sentAt != null -> "Send again"; else -> "Text it to ${customer?.name?.substringBefore(' ') ?: "them"}" },
-                    Modifier.fillMaxWidth(), small = "From your phone · $phone") {
-                    if (!sending) {
-                        if (com.zimdarselectric.app.data.CustomerTexts.canSend(context)) {
-                            sending = true
-                            scope.launch {
-                                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.zimdarselectric.app.data.CustomerTexts.sendText(context, q, customer, booking) }
-                                sending = false
-                                if (ok) { save(q.copy(sentAt = System.currentTimeMillis())); sendNote = "Sent. Their reply comes to your Messages app." }
-                                else sendNote = "Couldn't send. Tap the notification to send it from Messages."
+            when {
+                settings.signKey.isBlank() -> Text("Add your signing key in More → Settings to send confirmations.", color = Z.warn, fontSize = 13.sp)
+                phone.isBlank() -> Text("Add the customer's cell number (tap Customer above, or More → Customers) to send it.", color = Z.warn, fontSize = 13.sp)
+                else -> {
+                    NeonButton(when { sending -> "Sending…"; q.sentAt == null || q.signUrl.isBlank() -> "Send confirmation"; else -> "Send updated confirmation" },
+                        Modifier.fillMaxWidth(), small = "Texted from your phone · $phone") {
+                        if (!sending) {
+                            if (!com.zimdarselectric.app.data.CustomerTexts.canSend(context)) askSms.launch(android.Manifest.permission.SEND_SMS)
+                            else {
+                                sending = true; sendNote = null
+                                vm.sendAppointment(q) { url, err, texted ->
+                                    sending = false
+                                    sendNote = err ?: if (texted) "Sent. You'll get a notification when they confirm." else "Link made. Tap the notification to text it, or use Copy link."
+                                }
                             }
-                        } else askSms.launch(android.Manifest.permission.SEND_SMS)
+                        }
                     }
                 }
-                Label("Open in Messages instead →", color = Z.neon, modifier = Modifier.clickable {
-                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:" + android.net.Uri.encode(phone))).putExtra("sms_body", booking)) }
-                    save(q.copy(sentAt = System.currentTimeMillis()))
+            }
+            if (q.signUrl.isNotBlank()) Row {
+                Label("Preview page →", color = Z.neon, modifier = Modifier.clickable {
+                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(q.signUrl))) }
                 }.padding(vertical = 10.dp))
+                Spacer(Modifier.width(18.dp))
+                Label("Copy link", color = Z.neon, modifier = Modifier.clickable {
+                    context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("Appointment", q.signUrl))
+                    sendNote = "Link copied."
+                }.padding(vertical = 10.dp))
+                if (!customer?.email.isNullOrBlank()) {
+                    Spacer(Modifier.width(18.dp))
+                    Label("Email it", color = Z.neon, modifier = Modifier.clickable {
+                        runCatching {
+                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:"))
+                                .putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf(customer!!.email))
+                                .putExtra(android.content.Intent.EXTRA_SUBJECT, "Appointment confirmation · ${settings.businessName}")
+                                .putExtra(android.content.Intent.EXTRA_TEXT, com.zimdarselectric.app.data.CustomerTexts.confirmation(q, settings, q.signUrl)))
+                        }
+                    }.padding(vertical = 10.dp))
+                }
             }
             sendNote?.let { Text(it, color = Z.neon, fontSize = 13.sp) }
 

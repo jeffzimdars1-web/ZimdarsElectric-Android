@@ -142,7 +142,7 @@ class DriveService : Service(), LocationListener {
                     if (settings.textOnArrival) {
                         val c = q.customerId?.let { dao.customer(it) }
                         val first = (c?.name ?: q.customerName).substringBefore(' ').ifBlank { "there" }
-                        CustomerTexts.sendText(this@DriveService, q, c, "Hi $first, it's ${settings.ownerName.ifBlank { "your electrician" }} with ${settings.businessName}. I'm here!")
+                        CustomerTexts.sendText(this@DriveService, q, c, "${settings.businessName}: ${settings.ownerName.ifBlank { "Your technician" }} has arrived.")
                     }
                 }
                 notifyDone(if (arrived) (if (s.home) "Home" else "Arrived at ${s.toLabel}") else "Drive stopped",

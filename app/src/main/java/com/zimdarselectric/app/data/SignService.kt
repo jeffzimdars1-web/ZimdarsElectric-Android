@@ -92,8 +92,18 @@ object SignService {
 
     data class Link(val token: String, val url: String)
 
-    suspend fun create(key: String, payload: JSONObject, number: String, replaceToken: String?): Link = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("action", "create").put("quote_number", number).put("payload", payload)
+    /** What the customer sees on the appointment confirmation page. */
+    fun apptPayload(q: Quote, customer: Customer?, s: Settings): JSONObject = JSONObject()
+        .put("business", JSONObject().put("name", s.businessName).put("phone", s.phone).put("email", s.email)
+            .put("address", s.address).put("license", s.license).put("insurer", s.insurer).put("owner", s.ownerName))
+        .put("customer", JSONObject().put("name", customer?.name ?: q.customerName))
+        .put("appt", JSONObject().put("number", q.number).put("start", q.startAt ?: JSONObject.NULL).put("hasTime", q.hasTime)
+            .put("windowMin", s.arrivalWindow).put("site", q.site.ifBlank { customer?.address ?: "" })
+            .put("reason", q.notes.trim().ifBlank { q.title.takeIf { it != "Service call" } ?: "" }))
+        .put("terms", JSONObject().put("rates", s.chargeNote))
+
+    suspend fun create(key: String, payload: JSONObject, number: String, replaceToken: String?, kind: String = "quote"): Link = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("action", "create").put("quote_number", number).put("payload", payload).put("kind", kind)
         if (!replaceToken.isNullOrBlank()) body.put("replace", replaceToken)
         val r = call(key, body)
         Link(r.getString("token"), r.getString("url"))
@@ -143,6 +153,12 @@ object SignService {
                     dao.updateQuote(updated)
                     justSigned += updated
                 }
+                "confirmed" -> {
+                    val at = parseIso(item.optString("confirmed_at")) ?: System.currentTimeMillis()
+                    val updated = q.copy(confirmedAt = at, viewedAt = viewed ?: q.viewedAt)
+                    dao.updateQuote(updated)
+                    notifyConfirmed(context, updated)
+                }
                 "sent" -> if (viewed != null && q.viewedAt == null) dao.updateQuote(q.copy(viewedAt = viewed))
                 "canceled" -> {} // replaced by a newer link
             }
@@ -170,6 +186,21 @@ object SignService {
                 .build()
             runCatching { NotificationManagerCompat.from(context).notify(q.id.toInt(), n) }
         }
+    }
+
+    fun notifyConfirmed(context: Context, q: Quote) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Customer signatures", NotificationManager.IMPORTANCE_HIGH))
+        val day = q.startAt?.let { java.text.SimpleDateFormat("EEE MMM d", java.util.Locale.US).format(java.util.Date(it)) } ?: ""
+        val open = PendingIntent.getActivity(context, q.id.toInt(), Intent(context, MainActivity::class.java).putExtra(Reminders.EXTRA_QUOTE, q.id)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_stat_bolt)
+            .setContentTitle("${q.customerName.ifBlank { "Customer" }} confirmed the appointment")
+            .setContentText(listOf(day, q.site).filter { it.isNotBlank() }.joinToString(" · "))
+            .setContentIntent(open).setAutoCancel(true).build()
+        runCatching { NotificationManagerCompat.from(context).notify(300_000 + q.id.toInt(), n) }
     }
 
     /** Checks about every 15 minutes while the app is closed (Android decides the exact timing). */

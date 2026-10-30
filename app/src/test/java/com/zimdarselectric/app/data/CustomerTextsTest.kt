@@ -1,38 +1,36 @@
 package com.zimdarselectric.app.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
 
 class CustomerTextsTest {
     private val start = Calendar.getInstance().apply { set(2026, Calendar.OCTOBER, 31, 10, 0, 0) }.timeInMillis
-    private val s = Settings(ownerName = "Jeff")
+    private val s = Settings(ownerName = "Jeff", phone = "(315) 555-0100")
     private val c = Customer(id = 1, name = "Pat Sample", phone = "315-555-0199")
 
-    @Test fun eveningBeforeWithTime() {
+    @Test fun eveningBefore() {
         val m = CustomerTexts.message(Quote(number = "Q-1", startAt = start, site = "12 Main St"), c, s, nightBefore = true)
-        assertTrue(m, m.startsWith("Hi Pat, this is Jeff with Zimdars Electric LLC."))
-        assertTrue(m, m.contains("at 12 Main St tomorrow (Sat, Oct 31) at 10:00 AM, give or take 15 minutes"))
+        assertEquals("Zimdars Electric LLC appointment reminder: Tomorrow, Saturday, October 31, arrival at 10:00 AM (arrival window 9:45 AM to 10:15 AM) at 12 Main St. To reschedule, call or text (315) 555-0100.", m)
     }
 
     @Test fun hourBefore() {
         val m = CustomerTexts.message(Quote(number = "Q-1", startAt = start), c, s, nightBefore = false)
-        assertTrue(m, m.contains("around 10:00 AM, give or take 15 minutes"))
+        assertEquals("Zimdars Electric LLC: Jeff is scheduled to arrive at about 10:00 AM (arrival window 9:45 AM to 10:15 AM). See you soon.", m)
     }
 
     @Test fun noSetTime() {
         val m = CustomerTexts.message(Quote(number = "Q-1", startAt = start, hasTime = false), c, s, nightBefore = true)
-        assertTrue(m, m.contains("I'll text you when I'm on my way"))
+        assertTrue(m, m.contains("We will text you when we are on the way."))
     }
-}
 
-class BookingTextTest {
-    @org.junit.Test fun booking() {
-        val start = java.util.Calendar.getInstance().apply { set(2026, java.util.Calendar.OCTOBER, 31, 10, 0, 0) }.timeInMillis
-        val m = CustomerTexts.booking(Quote(number = "Q-9", startAt = start, site = "1013 Albany St, Utica, NY 13501", notes = "Bedroom light won't turn on"),
-            Customer(name = "Missy", phone = "3155550100"), Settings(ownerName = "Jeff"))
-        org.junit.Assert.assertTrue(m, m.startsWith("Hi Missy, this is Jeff with Zimdars Electric LLC. You're booked for Saturday, Oct 31 at 10:00 AM (give or take 15 minutes)."))
-        org.junit.Assert.assertTrue(m, m.contains("I'm coming to look at: Bedroom light won't turn on."))
-        org.junit.Assert.assertTrue(m, m.contains("Service call \$125"))
+    @Test fun confirmationLink() {
+        val m = CustomerTexts.confirmation(Quote(number = "Q-1", startAt = start), s, "https://x/appt/?t=abc")
+        assertEquals("Zimdars Electric LLC: Your service appointment is scheduled for Saturday, October 31 at 10:00 AM. Please review and confirm here: https://x/appt/?t=abc", m)
+    }
+
+    @Test fun onMyWay() {
+        assertEquals("Zimdars Electric LLC: Jeff is on the way and expects to arrive in about 18 minutes.", CustomerTexts.onMyWay(Quote(number = "Q-1"), c, s, 18))
     }
 }

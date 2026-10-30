@@ -22,18 +22,33 @@ import java.util.Locale
 object CustomerTexts {
     private const val CHANNEL = "customer_texts"
 
+    private fun biz(s: Settings) = s.businessName.trim().ifBlank { "Your electrician" }
+    private fun tech(s: Settings) = s.ownerName.trim().ifBlank { "Your technician" }
+    private fun time(ms: Long) = SimpleDateFormat("h:mm a", Locale.US).format(Date(ms))
+    private fun windowText(start: Long, s: Settings) =
+        if (s.arrivalWindow > 0) " (arrival window ${time(start - s.arrivalWindow * 60_000L)} to ${time(start + s.arrivalWindow * 60_000L)})" else ""
+    private fun contact(s: Settings) = if (s.phone.isNotBlank()) " To reschedule, call or text ${s.phone}." else ""
+
+    /** Formal reminder: the evening before, or shortly before arrival. */
     fun message(q: Quote, customer: Customer?, s: Settings, nightBefore: Boolean): String {
         val start = q.startAt ?: return ""
-        val first = (customer?.name ?: q.customerName).trim().substringBefore(' ').ifBlank { "there" }
-        val me = listOf(s.ownerName.trim(), s.businessName.trim()).filter { it.isNotBlank() }.let { if (it.size == 2) "${it[0]} with ${it[1]}" else it.firstOrNull() ?: "your electrician" }
-        val time = SimpleDateFormat("h:mm a", Locale.US).format(Date(start))
-        val day = SimpleDateFormat("EEE, MMM d", Locale.US).format(Date(start))
-        val window = if (s.arrivalWindow > 0) ", give or take ${s.arrivalWindow} minutes for weather or traffic" else ""
+        val day = SimpleDateFormat("EEEE, MMMM d", Locale.US).format(Date(start))
         val place = q.site.ifBlank { customer?.address ?: "" }.let { if (it.isBlank()) "" else " at $it" }
         return if (nightBefore) {
-            if (q.hasTime) "Hi $first, this is $me. Reminder that I'll be$place tomorrow ($day) at $time$window. Reply here if you need to change anything."
-            else "Hi $first, this is $me. Reminder that I'll be$place tomorrow ($day). I'll text you when I'm on my way. Reply here if you need to change anything."
-        } else "Hi $first, it's $me. I'm on schedule to be there around $time$window. See you soon!"
+            if (q.hasTime) "${biz(s)} appointment reminder: Tomorrow, $day, arrival at ${time(start)}${windowText(start, s)}$place.${contact(s)}"
+            else "${biz(s)} appointment reminder: Tomorrow, $day$place. We will text you when we are on the way.${contact(s)}"
+        } else "${biz(s)}: ${tech(s)} is scheduled to arrive at about ${time(start)}${windowText(start, s)}. See you soon."
+    }
+
+    /** The text that carries the confirmation page link. */
+    fun confirmation(q: Quote, s: Settings, url: String): String {
+        val start = q.startAt
+        val whenText = when {
+            start == null -> "Your service appointment is booked"
+            q.hasTime -> "Your service appointment is scheduled for " + SimpleDateFormat("EEEE, MMMM d 'at' h:mm a", Locale.US).format(Date(start))
+            else -> "Your service appointment is scheduled for " + SimpleDateFormat("EEEE, MMMM d", Locale.US).format(Date(start))
+        }
+        return "${biz(s)}: $whenText. Please review and confirm here: $url"
     }
 
     fun canSend(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
@@ -42,38 +57,12 @@ object CustomerTexts {
     fun remind(context: Context, q: Quote, customer: Customer?, s: Settings, nightBefore: Boolean) =
         sendText(context, q, customer, message(q, customer, s, nightBefore))
 
-    /** Booking confirmation for an appointment: when, where, what for, and how you charge. */
-    fun booking(q: Quote, customer: Customer?, s: Settings): String {
-        val first = (customer?.name ?: q.customerName).trim().substringBefore(' ').ifBlank { "there" }
-        val me = listOf(s.ownerName.trim(), s.businessName.trim()).filter { it.isNotBlank() }.let { if (it.size == 2) "${it[0]} with ${it[1]}" else it.firstOrNull() ?: "your electrician" }
-        val start = q.startAt
-        val day = start?.let { SimpleDateFormat("EEEE, MMM d", Locale.US).format(Date(it)) }
-        val time = start?.takeIf { q.hasTime }?.let { SimpleDateFormat("h:mm a", Locale.US).format(Date(it)) }
-        val window = if (time != null && s.arrivalWindow > 0) " (give or take ${s.arrivalWindow} minutes)" else ""
-        val whenText = when {
-            day == null -> "We'll set a day and time together."
-            time == null -> "You're booked for $day. I'll text you when I'm on my way."
-            else -> "You're booked for $day at $time$window."
-        }
-        val what = q.notes.trim().ifBlank { q.title.trim() }.let { if (it.isBlank() || it == "Service call") "" else " to look at: ${it.trimEnd('.')}." }
-        val place = q.site.ifBlank { customer?.address ?: "" }
-        return buildString {
-            append("Hi $first, this is $me. ")
-            append(whenText)
-            if (place.isNotBlank()) append(" Address: $place.")
-            if (what.isNotBlank()) append(" I'm coming$what")
-            if (s.chargeNote.isNotBlank()) append("\n\n").append(s.chargeNote.trim())
-            append("\n\nI'll send a reminder the evening before. Reply here if anything changes.")
-            if (s.phone.isNotBlank()) append(" ${s.phone}")
-        }
-    }
-
     /** "On my way, about 18 minutes" text. */
     fun onMyWay(q: Quote, customer: Customer?, s: Settings, minutes: Int): String {
         val first = (customer?.name ?: q.customerName).trim().substringBefore(' ').ifBlank { "there" }
         val me = listOf(s.ownerName.trim(), s.businessName.trim()).filter { it.isNotBlank() }.let { if (it.size == 2) "${it[0]} with ${it[1]}" else it.firstOrNull() ?: "your electrician" }
-        val eta = if (minutes <= 2) "just a couple of minutes" else "about $minutes minutes"
-        return "Hi $first, it's $me. I'm on my way and should be there in $eta. See you soon!"
+        val eta = if (minutes <= 2) "a couple of minutes" else "about $minutes minutes"
+        return "${biz(s)}: ${tech(s)} is on the way and expects to arrive in $eta."
     }
 
     /** Texts the customer from this phone. Returns true if it went out; otherwise leaves a tap-to-send notification. */
