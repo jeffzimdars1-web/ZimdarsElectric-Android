@@ -113,7 +113,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("Job site address", q.site, "site${q.id}") { save(q.copy(site = it)) }
             Spacer(Modifier.height(8.dp))
-            TextFieldSaved("Planned day (e.g. Mon Nov 2)", q.scheduled, "sch${q.id}") { save(q.copy(scheduled = it)) }
+            SchedulePicker(q) { save(it) }
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("What you'll do (the customer sees this)", q.notes, "notes${q.id}", singleLine = false) { save(q.copy(notes = it)) }
 

@@ -107,7 +107,13 @@ data class Quote(
     @ColumnInfo(defaultValue = "") val signerIp: String = "",
     /** The customer's signature image, stored on the phone. */
     @ColumnInfo(defaultValue = "") val signaturePath: String = "",
+    /** When the job starts (date + time). Null = not scheduled. */
+    val startAt: Long? = null,
+    /** Expected hours on site. 0 = use the quote's labor hours. */
+    @ColumnInfo(defaultValue = "0") val hoursOnSite: Double = 0.0,
 ) {
+    /** Hours to block on the calendar. */
+    val blockHours: Double get() = if (hoursOnSite > 0) hoursOnSite else laborHours
     val awaitingSignature: Boolean get() = signToken.isNotBlank() && signedAt == null
     /** Edited after the link went out, so the customer is looking at an older version. */
     val changedSinceSent: Boolean get() = sentAt != null && updatedAt > sentAt + 1500
@@ -328,6 +334,14 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 10 adds a real start date/time for the calendar. */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `startAt` INTEGER")
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `hoursOnSite` REAL NOT NULL DEFAULT 0")
+    }
+}
+
 /** Version 9 lets stock items remember their receipt names. */
 val MIGRATION_8_9 = object : Migration(8, 9) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -358,7 +372,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -368,7 +382,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .build().also { instance = it }
         }
     }

@@ -157,14 +157,19 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
             Box(Modifier.width(110.dp)) { NeonButton("New", Modifier.fillMaxWidth()) { vm.newQuote { nav.open(Page.EditQuote(it)) } } }
         }
         Spacer(Modifier.height(14.dp))
-        Segmented(filters, filter) { filter = it }
-        LazyColumn(Modifier.weight(1f)) {
+        val ui = vm.quotesUi
+        Segmented(listOf("List", "Calendar"), if (ui.calendar) 1 else 0) { ui.calendar = it == 1 }
+        Spacer(Modifier.height(8.dp))
+        if (!ui.calendar) Segmented(filters, filter) { filter = it }
+        if (ui.calendar) LazyColumn(Modifier.weight(1f).padding(top = 10.dp)) { calendarItems(vm, nav, quotes, lines, settings) }
+        else LazyColumn(Modifier.weight(1f)) {
             if (shown.isEmpty()) item {
                 Text("Nothing here yet.", color = Z.muted, modifier = Modifier.padding(vertical = 16.dp))
             }
             items(shown, key = { it.id }) { q: Quote ->
                 val t = computeTotals(q, lines.filter { it.quoteId == q.id }, settings)
-                ListRow(q.title.ifBlank { "Untitled job" }, "${q.number} · ${q.customerName.ifBlank { "No customer" }} · ${money(t.total)}".uppercase(),
+                ListRow(q.title.ifBlank { "Untitled job" }, ("${q.number} · ${q.customerName.ifBlank { "No customer" }} · ${money(t.total)}" +
+                    (q.startAt?.let { " · " + java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it)) } ?: "")).uppercase(),
                     onClick = { nav.open(Page.EditQuote(q.id)) }) { StatusDot(q.status, statusColor(q.status)) }
             }
         }

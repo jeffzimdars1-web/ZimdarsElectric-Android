@@ -69,3 +69,10 @@ fun boxText(qty: Double, pack: Double): String {
     val l = if (loose < 1e-9) "" else qtyText(loose) + " loose"
     return listOf(b, l).filter { it.isNotBlank() }.joinToString(" + ")
 }
+
+/** "Thu, Nov 5 · 8:00 AM · about 3 hr" for quotes and the customer's copy. */
+fun scheduleText(startAt: Long?, hours: Double): String {
+    if (startAt == null) return ""
+    val d = java.text.SimpleDateFormat("EEE, MMM d · h:mm a", Locale.US).format(java.util.Date(startAt))
+    return if (hours > 0) "$d · about ${qtyText(hours)} hr" else d
+}

@@ -127,6 +127,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     val booksUi = BooksUi()
 
+    /** Quotes tab: list or calendar, and which month the calendar shows. Kept while you open a quote. */
+    class QuotesUi {
+        var calendar by androidx.compose.runtime.mutableStateOf(false)
+        var month by androidx.compose.runtime.mutableStateOf(java.time.YearMonth.now())
+        var day by androidx.compose.runtime.mutableStateOf(java.time.LocalDate.now())
+    }
+    val quotesUi = QuotesUi()
+
     // ---------- Settings ----------
     fun saveSettings(s: Settings) = viewModelScope.launch { dao.saveSettings(s) }
 
