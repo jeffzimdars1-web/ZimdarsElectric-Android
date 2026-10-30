@@ -87,6 +87,10 @@ fun HomeScreen(vm: AppViewModel, nav: Nav) {
             NeonButton("New quote", Modifier.fillMaxWidth(), small = "Start") {
                 vm.newQuote { id -> nav.open(Page.EditQuote(id)) }
             }
+            Spacer(Modifier.height(10.dp))
+            OutlineBigButton("New appointment", Modifier.fillMaxWidth(), small = "Book a visit") {
+                vm.newAppointment(null) { id -> nav.open(Page.EditQuote(id)) }
+            }
             Spacer(Modifier.height(20.dp))
             Divider()
             Row(Modifier.fillMaxWidth()) {
@@ -155,10 +159,10 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
         Spacer(Modifier.height(22.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Title("Quotes", 38)
+            Title("Quotes", 34)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.width(92.dp)) { GhostButton("+ Appt", Modifier.fillMaxWidth().height(54.dp)) { vm.newAppointment(null) { nav.open(Page.EditQuote(it)) } } }
-                Box(Modifier.width(92.dp)) { NeonButton("+ Quote", Modifier.fillMaxWidth(), arrow = false) { vm.newQuote { nav.open(Page.EditQuote(it)) } } }
+                Box(Modifier.width(96.dp)) { GhostButton("+ Appt", Modifier.fillMaxWidth().height(54.dp)) { vm.newAppointment(null) { nav.open(Page.EditQuote(it)) } } }
+                Box(Modifier.width(112.dp)) { NeonButton("+ Quote", Modifier.fillMaxWidth(), arrow = false, fontSize = 18) { vm.newQuote { nav.open(Page.EditQuote(it)) } } }
             }
         }
         Spacer(Modifier.height(14.dp))

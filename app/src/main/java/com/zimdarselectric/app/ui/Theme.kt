@@ -101,9 +101,9 @@ fun SectionHeader(num: String, name: String, trailing: String? = null, onTrailin
 fun Divider() { Box(Modifier.fillMaxWidth().height(1.dp).background(Z.line)) }
 
 @Composable
-fun NeonButton(text: String, modifier: Modifier = Modifier, small: String? = null, arrow: Boolean = true, onClick: () -> Unit) {
+fun NeonButton(text: String, modifier: Modifier = Modifier, small: String? = null, arrow: Boolean = true, fontSize: Int? = null, onClick: () -> Unit) {
     // Long labels get a smaller size so they never wrap or get cut off.
-    val size = when { text.length <= 9 -> 22.sp; text.length <= 13 -> 19.sp; else -> 17.sp }
+    val size = fontSize?.sp ?: when { text.length <= 9 -> 22.sp; text.length <= 13 -> 19.sp; else -> 17.sp }
     Row(
         modifier = modifier.height(if (small != null) 64.dp else 54.dp).background(Z.neon, cut(14.dp)).clickable { onClick() }
             .padding(horizontal = if (arrow) 18.dp else 12.dp),
@@ -115,6 +115,24 @@ fun NeonButton(text: String, modifier: Modifier = Modifier, small: String? = nul
             Text(text.uppercase(), fontFamily = Condensed, fontSize = size, letterSpacing = 1.sp, color = Z.onNeon, maxLines = 1, softWrap = false)
         }
         if (arrow) Text("→", fontSize = 22.sp, color = Z.onNeon)
+    }
+}
+
+/** Same size as [NeonButton] but outlined, for the second big action on a screen. */
+@Composable
+fun OutlineBigButton(text: String, modifier: Modifier = Modifier, small: String? = null, onClick: () -> Unit) {
+    val size = when { text.length <= 9 -> 22.sp; text.length <= 15 -> 19.sp; else -> 17.sp }
+    Row(
+        modifier = modifier.height(if (small != null) 64.dp else 54.dp).border(BorderStroke(1.5.dp, Z.neon), cut(14.dp)).clickable { onClick() }
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(Modifier.weight(1f, fill = false)) {
+            if (small != null) Text(small.uppercase(), fontFamily = Mono, fontSize = 10.sp, letterSpacing = 1.5.sp, color = Z.neon, maxLines = 1)
+            Text(text.uppercase(), fontFamily = Condensed, fontSize = size, letterSpacing = 1.sp, color = Z.neon, maxLines = 1, softWrap = false)
+        }
+        Text("→", fontSize = 22.sp, color = Z.neon)
     }
 }
 
