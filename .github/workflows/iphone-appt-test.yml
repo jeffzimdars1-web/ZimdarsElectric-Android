@@ -1,0 +1,26 @@
+name: iPhone appointment test
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["docs/appt/**", "tools/appt-page-iphone-test.js", ".github/workflows/iphone-appt-test.yml"]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm i playwright@1.48.2 && npx playwright install --with-deps webkit
+      - run: mkdir -p tools/out && node tools/appt-page-iphone-test.js | tee tools/out/result.txt
+      - name: Publish screenshots
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          grep -q "confirm sent: confirm" tools/out/result.txt
+          grep -q "ics requested: yes" tools/out/result.txt
+          ! grep -q PAGEERROR tools/out/result.txt
+          cd tools/out && zip -q ../../iphone-appt-test.zip * && cd ../..
+          gh release view ci-preview >/dev/null 2>&1 || gh release create ci-preview --prerelease --title "PDF preview (test output)" --notes "Test output. Not an app update."
+          gh release upload ci-preview iphone-appt-test.zip --clobber
