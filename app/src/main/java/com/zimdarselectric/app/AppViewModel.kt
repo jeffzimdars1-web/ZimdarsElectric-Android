@@ -375,7 +375,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 cur.signToken.takeIf { it.isNotBlank() }, kind = "appt")
             val now = System.currentTimeMillis()
             val latest = dao.quote(q.id) ?: return@launch
-            dao.updateQuote(latest.copy(signToken = link.token, signUrl = link.url, sentAt = now, updatedAt = now, viewedAt = null, confirmedAt = null))
+            dao.updateQuote(latest.copy(signToken = link.token, signUrl = link.url, sentAt = now, updatedAt = now, viewedAt = null, confirmedAt = null,
+                canceledAt = null, cancelReason = "", status = if (latest.status == Status.DECLINED) Status.SENT else latest.status))
             SignService.scheduleBackgroundCheck(app)
             val texted = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 com.zimdarselectric.app.data.CustomerTexts.sendText(app, latest, c, com.zimdarselectric.app.data.CustomerTexts.confirmation(latest, s, link.url))
@@ -457,6 +458,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.updateQuote(q.copy(paidAmount = amount, paidAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
         val key = dao.settingsNow()?.signKey.orEmpty()
         if (q.invoiceToken.isNotBlank() && key.isNotBlank()) runCatching { SignService.markInvoicePaid(key, q.invoiceToken) }
+    }
+
+    /** Cancels an appointment: closes their page with a "canceled" notice, stops reminders, optionally texts them. */
+    fun cancelAppointment(q: Quote, reason: String, text: Boolean, onDone: (texted: Boolean) -> Unit = {}) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        val current = dao.quote(q.id) ?: return@launch
+        if (current.signToken.isNotBlank() && s.signKey.isNotBlank()) runCatching { SignService.cancel(s.signKey.trim(), current.signToken, notify = true, reason = reason.trim()) }
+        val updated = current.copy(status = Status.DECLINED, canceledAt = System.currentTimeMillis(), cancelReason = reason.trim(),
+            signToken = "", rescheduleText = "", updatedAt = System.currentTimeMillis())
+        dao.updateQuote(updated)
+        val customer = current.customerId?.let { dao.customer(it) }
+        val ok = text && com.zimdarselectric.app.data.CustomerTexts.canSend(app) &&
+            com.zimdarselectric.app.data.CustomerTexts.sendText(app, current, customer, com.zimdarselectric.app.data.CustomerTexts.canceled(current, s, reason))
+        onDone(ok)
     }
 
     /** Accept the customer's requested time: update the job, their page, and text them the new time. */

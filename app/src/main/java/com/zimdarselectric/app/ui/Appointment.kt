@@ -37,6 +37,7 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
     val customer = customers.firstOrNull { it.id == q.customerId }
     var pickCustomer by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var canceling by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var sending by remember { mutableStateOf(false) }
@@ -60,6 +61,14 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
         }
         Divider()
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
+            q.canceledAt?.let { at ->
+                Spacer(Modifier.height(12.dp))
+                Column(Modifier.fillMaxWidth().background(Z.raised).padding(14.dp)) {
+                    Label("Canceled ${java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(at))}", color = Z.warn)
+                    if (q.cancelReason.isNotBlank()) Text("Reason: ${q.cancelReason}", color = Z.text, fontSize = 14.sp)
+                    Text("Reminders are off. To book it again, set a new date below and send a new confirmation.", color = Z.muted, fontSize = 12.sp)
+                }
+            }
             SectionHeader("01", "Who + where")
             Row(Modifier.fillMaxWidth().clickable { pickCustomer = true }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -172,6 +181,10 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
             Spacer(Modifier.height(10.dp))
             NeonButton("Turn into a quote", Modifier.fillMaxWidth(), small = "Add materials + labor") { vm.appointmentToQuote(q) }
             Spacer(Modifier.height(10.dp))
+            if (q.canceledAt == null) {
+                GhostButton("Cancel appointment", Modifier.fillMaxWidth(), color = Z.warn) { canceling = true }
+                Spacer(Modifier.height(10.dp))
+            }
             GhostButton("Delete appointment", Modifier.fillMaxWidth(), color = Z.warn) { confirmDelete = true }
             Spacer(Modifier.height(40.dp))
         }
@@ -183,6 +196,24 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
     }) { c ->
         save(q.copy(customerId = c.id, customerName = c.name, site = q.site.ifBlank { c.address }))
         pickCustomer = false
+    }
+    if (canceling) {
+        var reason by remember { mutableStateOf("") }
+        val hasPhone = !customer?.phone.isNullOrBlank()
+        var textThem by remember { mutableStateOf(hasPhone) }
+        ZDialog("Cancel this appointment?", { canceling = false },
+            confirm = "Cancel it" to {
+                canceling = false
+                if (textThem && !com.zimdarselectric.app.data.CustomerTexts.canSend(context)) askSms.launch(android.Manifest.permission.SEND_SMS)
+                else vm.cancelAppointment(q, reason, textThem) { texted -> sendNote = if (texted) "Canceled. ${customer?.name?.substringBefore(' ') ?: "They"} got a text." else "Canceled." }
+            },
+            dismiss = "Keep it" to { canceling = false }) {
+            Field("Reason (optional, they'll see it)", reason, { reason = it })
+            if (hasPhone) Row(Modifier.fillMaxWidth().clickable { textThem = !textThem }.padding(vertical = 10.dp)) {
+                Text((if (textThem) "✓  " else "○  ") + "Text ${customer!!.name.substringBefore(' ')} that it's canceled", color = Z.text, fontSize = 15.sp)
+            }
+            Text("Their confirmation page will say it's canceled, and your reminders stop. They don't need to reply.", color = Z.muted, fontSize = 13.sp)
+        }
     }
     if (confirmDelete) ZDialog("Delete this appointment?", { confirmDelete = false },
         confirm = "Delete" to { vm.deleteQuote(q); confirmDelete = false; onBack() }, dismiss = "Keep" to { confirmDelete = false }) {

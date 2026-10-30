@@ -129,6 +129,20 @@
       el("div", { cls: "muted small", style: "text-align:right" }, [el("div", { text: "Ref. " + (a.number || d.quote_number) }), c.name ? el("div", { text: "For " + c.name }) : null]),
     ]));
 
+    if (d.status === "canceled" && p.canceled) {
+      // Canceled by the contractor: say so plainly, show what it was, nothing to do.
+      m.appendChild(el("div", { cls: "when", style: "border-color:var(--warn)" }, [
+        el("div", { cls: "kicker", style: "color:var(--warn)", text: "Appointment canceled" }),
+        el("div", { cls: "day", style: "text-decoration:line-through;color:var(--muted)", text: a.start ? fmt(a.start, { weekday: "long", month: "long", day: "numeric" }) + (a.hasTime ? " · " + fmt(a.start, { hour: "numeric", minute: "2-digit" }) : "") : "" }),
+        p.canceled.reason ? el("div", { text: "Reason: " + p.canceled.reason }) : null,
+        el("div", { cls: "muted small", text: "You don't need to do anything. To book a new time, call or text " + (b.phone || "us") + "." }),
+      ]));
+      if (b.phone) m.appendChild(el("div", { cls: "row" }, [
+        el("a", { cls: "btn btn-line", href: "tel:" + digits(b.phone), text: "Call" }),
+        el("a", { cls: "btn btn-line", href: "sms:" + digits(b.phone), text: "Text" }),
+      ]));
+      return;
+    }
     if (d.status === "canceled") {
       m.appendChild(el("div", { cls: "note", text: "This appointment was changed or canceled, so this confirmation is no longer current. Please check for a newer message from us, or call " + (b.phone || "us") + "." }));
     }

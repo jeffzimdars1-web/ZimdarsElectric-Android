@@ -134,8 +134,8 @@ object SignService {
         call(key, JSONObject().put("action", "paid").put("t", token))
     }
 
-    suspend fun cancel(key: String, token: String) = withContext(Dispatchers.IO) {
-        call(key, JSONObject().put("action", "cancel").put("t", token))
+    suspend fun cancel(key: String, token: String, notify: Boolean = false, reason: String = "") = withContext(Dispatchers.IO) {
+        call(key, JSONObject().put("action", "cancel").put("t", token).put("notify", notify).put("reason", reason))
     }
 
     private fun parseIso(s: String?): Long? = s?.takeIf { it.isNotBlank() && it != "null" }?.let {

@@ -179,6 +179,9 @@ data class Quote(
     val rescheduleWhen: Long? = null,
     @ColumnInfo(defaultValue = "") val rescheduleText: String = "",
     @ColumnInfo(defaultValue = "") val rescheduleNote: String = "",
+    /** You canceled this appointment (kept for history; reminders stop). */
+    val canceledAt: Long? = null,
+    @ColumnInfo(defaultValue = "") val cancelReason: String = "",
 ) {
     /** A new-time request that came in after the last confirmation was sent and hasn't been handled. */
     val hasRescheduleRequest: Boolean get() = rescheduleRequestedAt != null && rescheduleText.isNotBlank() && rescheduleRequestedAt > (sentAt ?: 0L)
@@ -497,6 +500,14 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/** Version 22: canceled appointments. */
+val MIGRATION_21_22 = object : Migration(21, 22) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `canceledAt` INTEGER")
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `cancelReason` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** Version 21: customer can ask for a different appointment time. */
 val MIGRATION_20_21 = object : Migration(20, 21) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -641,7 +652,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class, JobPhoto::class],
-    version = 21,
+    version = 22,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -653,7 +664,7 @@ abstract class AppDb : RoomDatabase() {
         fun close() = synchronized(this) { instance?.close(); instance = null }
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
                 .build().also { instance = it }
         }
     }

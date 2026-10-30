@@ -167,13 +167,13 @@ fun SchedulePicker(q: Quote, customer: com.zimdarselectric.app.data.Customer? = 
 
 private fun statusColorFor(s: String) = statusColor(s)
 private fun Quote.isAppt() = kind == com.zimdarselectric.app.data.Kind.APPT
-private fun Quote.dotColor() = if (isAppt()) Z.info else statusColor(status)
-private fun Quote.badge() = if (isAppt()) "APPOINTMENT" else status
+private fun Quote.dotColor() = if (canceledAt != null) Z.muted else if (isAppt()) Z.info else statusColor(status)
+private fun Quote.badge() = if (canceledAt != null) "CANCELED" else if (isAppt()) "APPOINTMENT" else status
 
 /** Month grid with jobs marked on their days, plus the chosen day's jobs underneath. */
 fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>, lines: List<QuoteLine>, settings: Settings) {
     val ui = vm.quotesUi
-    val scheduled = quotes.filter { it.startAt != null && it.status != com.zimdarselectric.app.data.Status.DECLINED }
+    val scheduled = quotes.filter { it.startAt != null && (it.status != com.zimdarselectric.app.data.Status.DECLINED || it.canceledAt != null) }
     val byDay = scheduled.groupBy { it.startAt!!.toLocal().toLocalDate() }
     item {
         CalendarMonth(ui.month, ui.day, byDay, onMonth = { ui.month = it }, onDay = { ui.day = it })

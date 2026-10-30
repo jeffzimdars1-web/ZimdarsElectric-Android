@@ -42,6 +42,19 @@ object CustomerTexts {
         } else "${biz(s)}: ${tech(s)} is scheduled to arrive at about ${time(start)}${windowText(start, s)}. See you soon."
     }
 
+    /** Sent when you cancel an appointment. No reply needed. */
+    fun canceled(q: Quote, s: Settings, reason: String): String {
+        val start = q.startAt
+        val whenText = when {
+            start == null -> "your upcoming appointment"
+            q.hasTime -> "your appointment on " + SimpleDateFormat("EEEE, MMMM d 'at' h:mm a", Locale.US).format(Date(start))
+            else -> "your appointment on " + SimpleDateFormat("EEEE, MMMM d", Locale.US).format(Date(start))
+        }
+        val why = reason.trim().takeIf { it.isNotBlank() }?.let { " Reason: ${it.trimEnd('.')}." } ?: ""
+        val rebook = if (s.phone.isNotBlank()) " To book a new time, call or text ${s.phone}." else ""
+        return "${biz(s)}: We're sorry, $whenText has been canceled.$why$rebook No reply is needed."
+    }
+
     /** Sent when you accept the customer's new time. */
     fun timeChanged(q: Quote, s: Settings): String {
         val start = q.startAt ?: return ""
