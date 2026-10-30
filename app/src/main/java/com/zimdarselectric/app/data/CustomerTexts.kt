@@ -34,10 +34,19 @@ object CustomerTexts {
         val start = q.startAt ?: return ""
         val day = SimpleDateFormat("EEEE, MMMM d", Locale.US).format(Date(start))
         val place = q.site.ifBlank { customer?.address ?: "" }.let { if (it.isBlank()) "" else " at $it" }
+        // The appointment page lets them pick a different time and leave a note (opens straight to the time picker).
+        val change = if (q.kind == Kind.APPT && q.signUrl.isNotBlank()) " Need a different time? Change it here: ${q.signUrl}&change=1" else ""
         return if (nightBefore) {
-            if (q.hasTime) "${biz(s)} appointment reminder: Tomorrow, $day, arrival at ${time(start)}${windowText(start, s)}$place.${contact(s)}"
-            else "${biz(s)} appointment reminder: Tomorrow, $day$place. We will text you when we are on the way.${contact(s)}"
+            if (q.hasTime) "${biz(s)} appointment reminder: Tomorrow, $day, arrival at ${time(start)}${windowText(start, s)}$place.${contact(s)}$change"
+            else "${biz(s)} appointment reminder: Tomorrow, $day$place. We will text you when we are on the way.${contact(s)}$change"
         } else "${biz(s)}: ${tech(s)} is scheduled to arrive at about ${time(start)}${windowText(start, s)}. See you soon."
+    }
+
+    /** Sent when you accept the customer's new time. */
+    fun timeChanged(q: Quote, s: Settings): String {
+        val start = q.startAt ?: return ""
+        val day = SimpleDateFormat("EEEE, MMMM d", Locale.US).format(Date(start))
+        return "${biz(s)}: You're all set. Your appointment is now $day at ${time(start)}${windowText(start, s)}. See you then."
     }
 
     /** The text that carries the confirmation page link. */

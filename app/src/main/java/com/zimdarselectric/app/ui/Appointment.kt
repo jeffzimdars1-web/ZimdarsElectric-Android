@@ -84,19 +84,18 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
                     Text(q.rescheduleText, color = Z.text, fontSize = 20.sp, fontFamily = Condensed)
                     if (q.rescheduleNote.isNotBlank()) Text("\"${q.rescheduleNote}\"", color = Z.muted, fontSize = 14.sp)
                     Spacer(Modifier.height(8.dp))
-                    if (q.startAt == q.rescheduleWhen) Text("On your calendar now. Tap Send updated confirmation below so they can confirm it.", color = Z.ok, fontSize = 14.sp)
-                    else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        NeonButton("Use this time", Modifier.weight(1f), arrow = false) {
-                            save(q.copy(startAt = q.rescheduleWhen, hasTime = true,
-                                scheduled = q.rescheduleText, rescheduleRequestedAt = q.rescheduleRequestedAt))
+                    var accepting by remember { mutableStateOf(false) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NeonButton(if (accepting) "Sending…" else "OK, use it", Modifier.weight(1f), arrow = false) {
+                            if (!accepting) { accepting = true; vm.acceptNewTime(q) { ok -> accepting = false; sendNote = if (ok) "New time saved and texted to them." else "New time saved. Couldn't text them; let them know." } }
                         }
-                        GhostButton("Call / text", Modifier.weight(1f).height(54.dp)) {
+                        GhostButton("Call", Modifier.weight(1f).height(54.dp)) {
                             customer?.phone?.takeIf { it.isNotBlank() }?.let { p ->
                                 runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:$p"))) }
                             }
                         }
                     }
-                    Text("\"Use this time\" puts it on your calendar (morning = 9 AM, afternoon = 1 PM; change it below if needed). Then tap Send updated confirmation so they can confirm the new time.",
+                    Text("\"OK, use it\" moves the appointment, updates their page and reminders, and texts them the new time. Or call to work out something else.",
                         color = Z.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                     Label("Dismiss", modifier = Modifier.clickable { save(q.copy(rescheduleText = "")) }.padding(top = 8.dp))
                 }

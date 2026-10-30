@@ -54,9 +54,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // While the app is open, check for customer signatures every 20 seconds (only if a quote is waiting).
         viewModelScope.launch {
             while (true) {
+                val now = System.currentTimeMillis()
                 if (quotes.value.any { it.awaitingSignature || (it.st124Token.isNotBlank() && it.st124SignedAt == null) }) {
                     runCatching { SignService.notifySigned(app, SignService.sync(app)) }
                     kotlinx.coroutines.delay(20_000)
+                } else if (quotes.value.any { it.kind == com.zimdarselectric.app.data.Kind.APPT && it.signToken.isNotBlank() && (it.startAt ?: 0) > now }) {
+                    // Confirmed appointments coming up: watch for "different time" requests.
+                    runCatching { SignService.sync(app) }
+                    kotlinx.coroutines.delay(60_000)
                 } else kotlinx.coroutines.delay(5_000)
             }
         }
@@ -452,6 +457,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.updateQuote(q.copy(paidAmount = amount, paidAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
         val key = dao.settingsNow()?.signKey.orEmpty()
         if (q.invoiceToken.isNotBlank() && key.isNotBlank()) runCatching { SignService.markInvoicePaid(key, q.invoiceToken) }
+    }
+
+    /** Accept the customer's requested time: update the job, their page, and text them the new time. */
+    fun acceptNewTime(q: Quote, onDone: (Boolean) -> Unit = {}) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        val current = dao.quote(q.id) ?: return@launch
+        val start = current.rescheduleWhen ?: return@launch
+        val updated = current.copy(startAt = start, hasTime = true, scheduled = current.rescheduleText, rescheduleText = "", updatedAt = System.currentTimeMillis())
+        dao.updateQuote(updated)
+        if (current.signToken.isNotBlank() && s.signKey.isNotBlank()) runCatching { SignService.retime(s.signKey, current.signToken, start, true) }
+        val customer = current.customerId?.let { dao.customer(it) }
+        val ok = com.zimdarselectric.app.data.CustomerTexts.canSend(app) &&
+            com.zimdarselectric.app.data.CustomerTexts.sendText(app, updated, customer, com.zimdarselectric.app.data.CustomerTexts.timeChanged(updated, s))
+        onDone(ok)
     }
 
     // ---------- ST-124 ----------

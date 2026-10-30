@@ -386,6 +386,10 @@ interface AppDao {
     @Query("SELECT * FROM Quote WHERE signToken != '' AND signedAt IS NULL AND confirmedAt IS NULL")
     suspend fun quotesAwaitingSignature(): List<Quote>
 
+    /** Confirmed appointments still ahead, so a customer's "different time" request is picked up. */
+    @Query("SELECT * FROM Quote WHERE kind = 'APPT' AND signToken != '' AND confirmedAt IS NOT NULL AND startAt > :since")
+    suspend fun upcomingConfirmedAppts(since: Long): List<Quote>
+
     @Query("SELECT * FROM Customer WHERE id = :id")
     suspend fun customer(id: Long): Customer?
 

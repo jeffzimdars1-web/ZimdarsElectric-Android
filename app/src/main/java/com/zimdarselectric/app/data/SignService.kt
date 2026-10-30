@@ -124,6 +124,11 @@ object SignService {
         Link(r.getString("token"), r.getString("url"))
     }
 
+    /** Moves the appointment on the customer's page to a new time (stays confirmed). */
+    suspend fun retime(key: String, token: String, start: Long, hasTime: Boolean) = withContext(Dispatchers.IO) {
+        call(key, JSONObject().put("action", "retime").put("t", token).put("start", start).put("hasTime", hasTime))
+    }
+
     /** Shows "Paid" on the invoice page. */
     suspend fun markInvoicePaid(key: String, token: String) = withContext(Dispatchers.IO) {
         call(key, JSONObject().put("action", "paid").put("t", token))
@@ -149,7 +154,7 @@ object SignService {
         val dao = AppDb.get(context).dao()
         val settings = dao.settingsNow()
         val key = settings?.signKey?.trim().orEmpty()
-        val waiting = dao.quotesAwaitingSignature()
+        val waiting = dao.quotesAwaitingSignature() + dao.upcomingConfirmedAppts(System.currentTimeMillis() - 3_600_000L)
         val waitingSt = dao.quotesAwaitingSt124()
         if (key.isBlank() || (waiting.isEmpty() && waitingSt.isEmpty())) return@withContext emptyList()
         val tokens = waiting.map { it.signToken } + waitingSt.map { it.st124Token }
@@ -206,14 +211,12 @@ object SignService {
                     dao.updateQuote(updated)
                     justSigned += updated
                 }
-                "confirmed" -> {
-                    val at = parseIso(item.optString("confirmed_at")) ?: System.currentTimeMillis()
-                    val updated = q.copy(confirmedAt = at, viewedAt = viewed ?: q.viewedAt)
-                    dao.updateQuote(updated)
-                    notifyConfirmed(context, updated)
-                }
-                "sent" -> {
+                "sent", "confirmed" -> {
                     var updated = if (viewed != null && q.viewedAt == null) q.copy(viewedAt = viewed) else q
+                    if (item.optString("status") == "confirmed" && q.confirmedAt == null) {
+                        updated = updated.copy(confirmedAt = parseIso(item.optString("confirmed_at")) ?: System.currentTimeMillis())
+                        notifyConfirmed(context, updated)
+                    }
                     item.optJSONObject("reschedule")?.let { rs ->
                         val at = parseIso(rs.optString("requested_at")) ?: return@let
                         if (at <= (q.rescheduleRequestedAt ?: 0L)) return@let
