@@ -333,13 +333,14 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
             NewContactsBanner(vm)
         }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 22.dp)) {
-            val shown = customers.filter { search.isBlank() || it.name.contains(search, true) || it.address.contains(search, true) || it.phone.contains(search) }
+            val shown = customers.filter { search.isBlank() || it.name.contains(search, true) || it.address.contains(search, true) || it.phone.contains(search) || it.properties.contains(search, true) }
             if (shown.isEmpty() && search.isBlank()) item { Text("No customers yet. Search above to find someone in your phone contacts.", color = Z.muted, modifier = Modifier.padding(vertical = 14.dp)) }
             if (search.trim().length >= 2) item { ContactResults(search, customers) { c -> editing = c } }
             items(shown, key = { it.id }) { c ->
                 Column(Modifier.clickable { editing = c }.padding(vertical = 12.dp)) {
                     Text(c.name, color = Z.text, fontSize = 18.sp)
                     Label(listOf(c.address, c.phone).filter { it.isNotBlank() }.joinToString(" · "))
+                    c.otherProperties.forEach { p -> Label("+ " + listOf(p.label, p.address).filter { it.isNotBlank() }.joinToString(": "), color = Z.info) }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (c.phone.isNotBlank()) {
@@ -361,14 +362,31 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
         var email by remember(c.id) { mutableStateOf(c.email) }
         var address by remember(c.id) { mutableStateOf(c.address) }
         var notes by remember(c.id) { mutableStateOf(c.notes) }
+        val props = remember(c.id) { androidx.compose.runtime.mutableStateListOf<Customer.Property>().apply { addAll(c.otherProperties) } }
+        var propsKey by remember(c.id) { mutableStateOf(0) }
         ZDialog(if (c.id == 0L) "New customer" else "Edit customer", { editing = null },
-            confirm = "Save" to { if (name.isNotBlank()) { vm.saveCustomer(c.copy(name = name.trim(), phone = phone.trim(), email = email.trim(), address = address.trim(), notes = notes.trim())); editing = null } },
+            confirm = "Save" to { if (name.isNotBlank()) { vm.saveCustomer(c.copy(name = name.trim(), phone = phone.trim(), email = email.trim(), address = address.trim(), notes = notes.trim()).withProperties(props.toList())); editing = null } },
             dismiss = (if (c.id == 0L) "Cancel" else "Delete") to { if (c.id != 0L) vm.deleteCustomer(c); editing = null }) {
+          Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
             Field("Name", name, { name = it }); Spacer(Modifier.height(6.dp))
             Field("Phone", phone, { phone = it }); Spacer(Modifier.height(6.dp))
             Field("Email", email, { email = it }); Spacer(Modifier.height(6.dp))
-            AddressField("Address", address, "caddr${c.id}", onValue = { address = it }); Spacer(Modifier.height(6.dp))
+            AddressField(if (props.isEmpty()) "Address" else "Main address", address, "caddr${c.id}", onValue = { address = it }); Spacer(Modifier.height(6.dp))
+            props.forEachIndexed { i, p ->
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Label("Property ${i + 2}", color = Z.info, modifier = Modifier.weight(1f))
+                    Label("Remove", color = Z.warn, modifier = Modifier.clickable { props.removeAt(i); propsKey++ }.padding(6.dp))
+                }
+                Field("Name it (e.g. Remsen rental)", p.label, { props[i] = props[i].copy(label = it) })
+                Spacer(Modifier.height(4.dp))
+                AddressField("Address", p.address, "cprop${c.id}-$i-$propsKey", onValue = { v -> props[i] = props[i].copy(address = v) })
+            }
+            Spacer(Modifier.height(8.dp))
+            GhostButton("+ Add another property", Modifier.fillMaxWidth()) { props.add(Customer.Property("", "")) }
+            Spacer(Modifier.height(8.dp))
             Field("Notes (panel location, gate code…)", notes, { notes = it }, singleLine = false)
+          }
         }
     }
 }

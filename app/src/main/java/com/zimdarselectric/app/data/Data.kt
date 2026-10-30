@@ -52,7 +52,26 @@ data class Customer(
     val address: String = "",
     val notes: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-)
+    /** Other properties they own, one per line: "name<TAB>address" (e.g. "Remsen rental	123 Main St"). */
+    @ColumnInfo(defaultValue = "") val properties: String = "",
+) {
+    data class Property(val label: String, val address: String)
+
+    /** Extra properties beyond the main [address]. */
+    val otherProperties: List<Property>
+        get() = properties.lines().mapNotNull { ln ->
+            val parts = ln.split('\t', limit = 2)
+            val addr = parts.getOrNull(1)?.trim().orEmpty().ifBlank { parts[0].trim() }
+            if (addr.isBlank()) null else Property(if (parts.size == 2) parts[0].trim() else "", addr)
+        }
+
+    /** The main address first, then the others. */
+    val allProperties: List<Property>
+        get() = (if (address.isNotBlank()) listOf(Property("Main", address)) else emptyList()) + otherProperties
+
+    fun withProperties(list: List<Property>) = copy(properties = list.filter { it.address.isNotBlank() }
+        .joinToString("\n") { "${it.label.replace('\t', ' ').replace('\n', ' ').trim()}\t${it.address.replace('\t', ' ').replace('\n', ' ').trim()}" })
+}
 
 @Entity
 data class Material(
@@ -407,6 +426,13 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/** Version 18 lets a customer have more than one property. */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Customer` ADD COLUMN `properties` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** Version 17 lets one job be part new install, part repair. */
 val MIGRATION_16_17 = object : Migration(16, 17) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -497,7 +523,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class],
-    version = 17,
+    version = 18,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -507,7 +533,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                 .build().also { instance = it }
         }
     }

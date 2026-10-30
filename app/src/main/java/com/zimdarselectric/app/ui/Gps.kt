@@ -90,11 +90,23 @@ fun SiteAddress(vm: AppViewModel, q: com.zimdarselectric.app.data.Quote, custome
             save(q.copy(site = p.label, siteLat = p.lat, siteLon = p.lon))
             if (customer != null && customer.address.isBlank()) vm.saveCustomer(customer.copy(address = p.label))
         })
-    val saved = customer?.address.orEmpty()
-    if (q.site.isBlank() && saved.isNotBlank()) {
-        Label("Use ${customer!!.name.substringBefore(' ')}'s address: $saved →", color = Z.neon,
-            modifier = Modifier.clickable { save(q.copy(site = saved, siteLat = null, siteLon = null)); fillKey++ }.padding(vertical = 10.dp))
-    } else if (q.site.isBlank() && customer != null) {
+    val first = customer?.name?.substringBefore(' ').orEmpty()
+    val props = customer?.allProperties.orEmpty()
+    val others = props.filter { !it.address.equals(q.site.trim(), ignoreCase = true) }
+    if (customer != null && others.isNotEmpty() && (q.site.isBlank() || props.size > 1)) {
+        if (props.size > 1) Label(if (q.site.isBlank()) "Which property?" else "Other properties", modifier = Modifier.padding(top = 6.dp))
+        others.forEach { p ->
+            val name = if (props.size > 1) p.label.ifBlank { "Property" } else "$first's address"
+            Label("Use $name: ${p.address} →", color = Z.neon,
+                modifier = Modifier.clickable { save(q.copy(site = p.address, siteLat = null, siteLon = null)); fillKey++ }.padding(vertical = 8.dp))
+        }
+    }
+    if (customer != null && q.site.isNotBlank() && customer.address.isNotBlank() && props.none { it.address.equals(q.site.trim(), ignoreCase = true) }) {
+        Label("Save this address to $first's properties →", color = Z.info, modifier = Modifier.clickable {
+            vm.saveCustomer(customer.withProperties(customer.otherProperties + com.zimdarselectric.app.data.Customer.Property("", q.site.trim())))
+        }.padding(vertical = 8.dp))
+    }
+    if (q.site.isBlank() && customer != null && props.isEmpty()) {
         Text("No address saved for ${customer.name.substringBefore(' ')} yet. Type it here (pick a suggestion) and it's saved to them for next time.",
             color = Z.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
     }
