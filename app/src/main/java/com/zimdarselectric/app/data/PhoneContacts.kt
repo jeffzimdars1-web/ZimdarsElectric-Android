@@ -39,6 +39,25 @@ object PhoneContacts {
         out.values.take(limit)
     }
 
+    /** Every contact that has a phone number, one per person (mobile number preferred). */
+    suspend fun all(context: Context): List<Contact> = withContext(Dispatchers.IO) {
+        if (!allowed(context)) return@withContext emptyList()
+        val out = LinkedHashMap<Long, Contact>()
+        context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.CONTACT_ID, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.TYPE),
+            null, null, "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} COLLATE NOCASE",
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val mobile = c.getInt(3) == ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE
+                if (out[id] == null || mobile) out[id] = Contact(id, c.getString(1) ?: "", c.getString(2) ?: "")
+            }
+        }
+        out.values.filter { it.name.isNotBlank() }
+    }
+
     /** Builds a customer from a contact, with their email and home address if the contact has them. */
     suspend fun toCustomer(context: Context, contact: Contact): Customer = withContext(Dispatchers.IO) {
         fun firstOf(mime: String, column: String): String =

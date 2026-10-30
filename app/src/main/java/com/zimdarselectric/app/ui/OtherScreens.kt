@@ -310,14 +310,25 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     var editing by remember { mutableStateOf<Customer?>(null) }
     var search by remember { mutableStateOf("") }
+    var importMsg by remember { mutableStateOf<String?>(null) }
+    var importing by remember { mutableStateOf(false) }
+    val askContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) { importing = true; vm.importAllContacts { a, s -> importing = false; importMsg = "Added $a contact${if (a == 1) "" else "s"}" + if (s > 0) " · $s already here" else "" } }
+        else importMsg = "The app needs contacts permission to import them."
+    }
     Column(Modifier.fillMaxSize()) {
         BackHeader("Customers", onBack)
         Column(Modifier.padding(horizontal = 22.dp)) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Field("Search", search, { search = it }, Modifier.weight(1f))
-                Box(Modifier.width(100.dp)) { NeonButton("+ New", Modifier.fillMaxWidth()) { editing = Customer(name = "") } }
+                Box(Modifier.width(100.dp)) { NeonButton("+ New", Modifier.fillMaxWidth(), arrow = false) { editing = Customer(name = "") } }
             }
+            Spacer(Modifier.height(8.dp))
+            GhostButton(if (importing) "Importing…" else "Import all phone contacts", Modifier.fillMaxWidth()) {
+                if (!importing) { importMsg = null; askContacts.launch(android.Manifest.permission.READ_CONTACTS) }
+            }
+            importMsg?.let { Text(it, color = Z.neon, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp)) }
         }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 22.dp)) {
             val shown = customers.filter { search.isBlank() || it.name.contains(search, true) || it.address.contains(search, true) || it.phone.contains(search) }

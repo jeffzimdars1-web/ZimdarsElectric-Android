@@ -263,6 +263,9 @@ interface AppDao {
     fun customers(): Flow<List<Customer>>
 
     @Insert suspend fun insertCustomer(c: Customer): Long
+
+    @Query("SELECT * FROM Customer")
+    suspend fun customersNow(): List<Customer>
     @Update suspend fun updateCustomer(c: Customer)
     @Delete suspend fun deleteCustomer(c: Customer)
 

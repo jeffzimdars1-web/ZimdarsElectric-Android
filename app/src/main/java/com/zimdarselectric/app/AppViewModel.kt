@@ -148,6 +148,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveCustomer(c: Customer, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
         if (c.id == 0L) onSaved(dao.insertCustomer(c)) else { dao.updateCustomer(c); onSaved(c.id) }
     }
+    /** Copies every phone contact into Customers, skipping anyone already saved (same number or same name). */
+    fun importAllContacts(onDone: (added: Int, skipped: Int) -> Unit) = viewModelScope.launch {
+        val contacts = com.zimdarselectric.app.data.PhoneContacts.all(app)
+        val have = dao.customersNow()
+        val phones = have.map { it.phone.filter(Char::isDigit).takeLast(10) }.filter { it.length >= 7 }.toMutableSet()
+        val names = have.map { it.name.trim().lowercase() }.toMutableSet()
+        var added = 0
+        for (k in contacts) {
+            val p = k.phone.filter(Char::isDigit).takeLast(10)
+            if (p in phones || k.name.trim().lowercase() in names) continue
+            dao.insertCustomer(com.zimdarselectric.app.data.PhoneContacts.toCustomer(app, k))
+            phones += p; names += k.name.trim().lowercase(); added++
+        }
+        onDone(added, contacts.size - added)
+    }
+
     fun deleteCustomer(c: Customer) = viewModelScope.launch { dao.deleteCustomer(c) }
 
     // ---------- Materials / stock ----------
