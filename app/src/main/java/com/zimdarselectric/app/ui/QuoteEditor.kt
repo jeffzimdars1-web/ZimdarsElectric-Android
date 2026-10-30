@@ -121,6 +121,10 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             SiteAddress(vm, q, customers.firstOrNull { it.id == q.customerId }, "Job site address") { save(it) }
             Spacer(Modifier.height(8.dp))
             SchedulePicker(q, customers.firstOrNull { it.id == q.customerId }, settings) { save(it) }
+            if (q.startAt != null || q.privateNote.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                TextFieldSaved("Notes for you (customer doesn't see these)", q.privateNote, "qpnote${q.id}", singleLine = false) { save(q.copy(privateNote = it)) }
+            }
             DriveSection(vm, q)
             Spacer(Modifier.height(8.dp))
             val both = q.jobType == JobType.BOTH

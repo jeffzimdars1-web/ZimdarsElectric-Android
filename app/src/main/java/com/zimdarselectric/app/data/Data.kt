@@ -172,6 +172,8 @@ data class Quote(
     /** Text the customer a review link the day after the job is done. */
     @ColumnInfo(defaultValue = "1") val askReview: Boolean = true,
     val reviewAskedAt: Long? = null,
+    /** Your own note about the visit (gate code, call first, bring the ladder). Never sent to the customer. */
+    @ColumnInfo(defaultValue = "") val privateNote: String = "",
 ) {
     /** Install work here needs a signed ST-124 (new install, or the install part of install + repair). */
     val needsSt124: Boolean get() = kind == Kind.QUOTE && (jobType == JobType.INSTALL || jobType == JobType.BOTH)
@@ -484,6 +486,13 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/** Version 20: your own note on a job or appointment. */
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `privateNote` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** Version 19: ST-124 signing, change orders, invoices, review requests, job photos, tax settings. */
 val MIGRATION_18_19 = object : Migration(18, 19) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -611,7 +620,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class, JobPhoto::class],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -623,7 +632,7 @@ abstract class AppDb : RoomDatabase() {
         fun close() = synchronized(this) { instance?.close(); instance = null }
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                 .build().also { instance = it }
         }
     }

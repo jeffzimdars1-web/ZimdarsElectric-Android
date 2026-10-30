@@ -209,6 +209,7 @@ fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>,
                 Text(q.title.ifBlank { "Untitled job" }, color = Z.text, fontSize = 16.sp)
                 Label("${q.number} · ${q.customerName.ifBlank { "No customer" }}" + if (q.isAppt()) "" else " · ${money(t.total)}")
                 if (q.site.isNotBlank()) Text(q.site, color = Z.muted, fontSize = 13.sp)
+                if (q.privateNote.isNotBlank()) Text("📝 " + q.privateNote.trim(), color = Z.info, fontSize = 13.sp, maxLines = 3)
                 Spacer(Modifier.height(4.dp))
                 StatusDot(q.badge(), q.dotColor())
             }

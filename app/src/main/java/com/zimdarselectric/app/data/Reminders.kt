@@ -81,7 +81,7 @@ object Reminders {
         val b = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_bolt)
             .setContentTitle(title).setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text + if (q.notes.isNotBlank()) "\n" + q.notes else ""))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text + (if (q.privateNote.isNotBlank()) "\nYour note: " + q.privateNote.trim() else "") + if (q.notes.isNotBlank()) "\n" + q.notes else ""))
             .setContentIntent(open).setAutoCancel(true)
         if (q.site.isNotBlank()) {
             val maps = PendingIntent.getActivity(context, 100_000 + q.id.toInt(),

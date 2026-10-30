@@ -50,6 +50,7 @@ object Inbox {
         return base.copy(
             title = s("title", base.title), site = s("site", base.site), jobType = s("jobType", base.jobType),
             notes = s("notes", base.notes), repairNotes = s("repairNotes", base.repairNotes),
+            privateNote = s("privateNote", base.privateNote),
             laborHours = d("laborHours", base.laborHours), repairHours = d("repairHours", base.repairHours),
             laborRate = d("laborRate", base.laborRate), taxRatePct = d("taxRatePct", base.taxRatePct),
             markupPct = d("markupPct", base.markupPct), miles = d("miles", base.miles),

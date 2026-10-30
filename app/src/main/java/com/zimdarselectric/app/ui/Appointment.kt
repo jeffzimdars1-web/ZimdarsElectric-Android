@@ -78,6 +78,9 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
 
             SectionHeader("02", "When")
             SchedulePicker(q, customer, settings) { save(it) }
+            Spacer(Modifier.height(8.dp))
+            TextFieldSaved("Notes for you (customer doesn't see these)", q.privateNote, "apnote${q.id}", singleLine = false) { save(q.copy(privateNote = it)) }
+            Label("Shows on the calendar and in your reminders.")
             DriveSection(vm, q)
 
             SectionHeader("03", "Confirmation for the customer")
