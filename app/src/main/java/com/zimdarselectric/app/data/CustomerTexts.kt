@@ -65,13 +65,23 @@ object CustomerTexts {
         return "${biz(s)}: ${tech(s)} is on the way and expects to arrive in $eta."
     }
 
+    /** The message, then any link on its own, when together they'd be longer than one text (160 characters). */
+    fun splitForSms(text: String): List<String> {
+        val url = Regex("https?://\\S+").find(text)?.value ?: return listOf(text)
+        if (text.length <= 160) return listOf(text)
+        val body = text.replace(url, "").replace(Regex("\\s+$"), "").ifBlank { return listOf(url) }
+        return listOf(body, url)
+    }
+
     /** Texts the customer from this phone. Returns true if it went out; otherwise leaves a tap-to-send notification. */
     fun sendText(context: Context, q: Quote, customer: Customer?, text: String): Boolean {
         val phone = customer?.phone?.filter { it.isDigit() || it == '+' }.orEmpty()
         if (phone.length < 7) { notify(context, q, "Couldn't text ${q.customerName.ifBlank { "the customer" }}", "No cell number saved for them.", null); return false }
         val sent = canSend(context) && runCatching {
             val sms = if (Build.VERSION.SDK_INT >= 31) context.getSystemService(SmsManager::class.java) else @Suppress("DEPRECATION") SmsManager.getDefault()
-            sms.sendMultipartTextMessage(phone, null, sms.divideMessage(text), null, null)
+            // A long text gets split into pieces, and iPhones can show a link cut in half (so it doesn't work).
+            // Send any link as its own short text right after the message so it always arrives whole.
+            splitForSms(text).forEach { part -> sms.sendMultipartTextMessage(phone, null, sms.divideMessage(part), null, null) }
         }.isSuccess
         val who = (customer?.name ?: q.customerName).ifBlank { phone }
         if (sent) notify(context, q, "Texted $who", text, null)

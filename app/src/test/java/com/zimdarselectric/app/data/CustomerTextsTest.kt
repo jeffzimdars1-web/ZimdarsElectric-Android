@@ -33,4 +33,15 @@ class CustomerTextsTest {
     @Test fun onMyWay() {
         assertEquals("Zimdars Electric LLC: Jeff is on the way and expects to arrive in about 18 minutes.", CustomerTexts.onMyWay(Quote(number = "Q-1"), c, s, 18))
     }
+
+    @Test fun longConfirmation_sendsLinkOnItsOwn() {
+        val url = "https://jeffzimdars1-web.github.io/ZimdarsElectric-Android/appt/?t=IwCqAbcdEfghIjklMnopQrstUvwxYz01"
+        val q = Quote(number = "Q-1", startAt = start, hasTime = true)
+        val parts = CustomerTexts.splitForSms(CustomerTexts.confirmation(q, s, url))
+        assertEquals(2, parts.size)
+        assertEquals(url, parts[1])
+        assertTrue(parts[0].endsWith("confirm here:"))
+        assertTrue(parts.all { it.length <= 160 })
+        assertEquals(listOf("Short text"), CustomerTexts.splitForSms("Short text"))
+    }
 }
