@@ -86,8 +86,8 @@ class Nav {
 @Composable
 fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () -> Unit = {}) {
     val nav = remember { Nav() }
-    // Check for new phone contacts whenever the app comes to the front.
-    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.refreshNewContacts() }
+    // Look for new phone contacts once, when the app starts up.
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshNewContacts() }
     androidx.compose.runtime.LaunchedEffect(openQuote) {
         if (openQuote != null) { nav.goTab(Tab.QUOTES); nav.open(Page.EditQuote(openQuote)); onOpened() }
     }
