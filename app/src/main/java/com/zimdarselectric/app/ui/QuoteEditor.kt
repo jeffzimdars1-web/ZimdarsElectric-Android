@@ -380,7 +380,7 @@ fun CustomerPicker(customers: List<Customer>, onDismiss: () -> Unit, onNew: (Cus
         var search by remember { mutableStateOf("") }
         ZDialog("Choose customer", onDismiss, confirm = "+ New customer" to { name = search; adding = true }, dismiss = "Cancel" to onDismiss) {
             Field("Search name or number", search, { search = it })
-            val shown = customers.filter { search.isBlank() || it.name.contains(search.trim(), true) || it.phone.filter { d -> d.isDigit() }.contains(search.filter { d -> d.isDigit() }.ifBlank { "#" }) }
+            val shown = searchCustomers(customers, search)
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 if (shown.isNotEmpty() && search.isNotBlank()) item { Spacer(Modifier.height(8.dp)); Label("Your customers", color = Z.neon) }
                 items(shown, key = { it.id }) { c ->
@@ -522,4 +522,29 @@ fun MaterialPicker(
             }
         }
     }
+}
+
+
+/**
+ * Customers matching what's typed, best first: names that start with it, then any word in the name
+ * (first or last name) that starts with it, then (3+ letters) anywhere in the name or address.
+ * Numbers match phone digits once 3 are typed.
+ */
+fun searchCustomers(customers: List<com.zimdarselectric.app.data.Customer>, query: String): List<com.zimdarselectric.app.data.Customer> {
+    val q = query.trim().lowercase()
+    if (q.isEmpty()) return customers
+    val digits = q.filter { it.isDigit() }
+    return customers.mapNotNull { c ->
+        val name = c.name.lowercase()
+        val words = name.split(' ', '-', '.', '\'', '&').filter { it.isNotBlank() }
+        val rank = when {
+            name.startsWith(q) -> 0
+            words.any { it.startsWith(q) } -> 1
+            q.length >= 3 && name.contains(q) -> 2
+            q.length >= 3 && (c.address.lowercase().contains(q) || c.properties.lowercase().contains(q)) -> 3
+            digits.length >= 3 && digits.length == q.length && c.phone.filter { it.isDigit() }.contains(digits) -> 1
+            else -> null
+        }
+        rank?.let { it to c }
+    }.sortedWith(compareBy({ it.first }, { it.second.name.lowercase() })).map { it.second }
 }
