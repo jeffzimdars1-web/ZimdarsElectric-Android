@@ -319,7 +319,7 @@ fun ZDialog(
 
 @Composable
 fun CustomerPicker(customers: List<Customer>, onDismiss: () -> Unit, onNew: (Customer) -> Unit, onPick: (Customer) -> Unit) {
-    var adding by remember { mutableStateOf(customers.isEmpty()) }
+    var adding by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
@@ -334,11 +334,16 @@ fun CustomerPicker(customers: List<Customer>, onDismiss: () -> Unit, onNew: (Cus
             Field("Address", address, { address = it })
         }
     } else {
-        ZDialog("Choose customer", onDismiss, confirm = "+ New customer" to { adding = true }, dismiss = "Cancel" to onDismiss) {
-            LazyColumn(Modifier.heightIn(max = 380.dp)) {
-                items(customers, key = { it.id }) { c ->
+        var search by remember { mutableStateOf("") }
+        ZDialog("Choose customer", onDismiss, confirm = "+ New customer" to { name = search; adding = true }, dismiss = "Cancel" to onDismiss) {
+            Field("Search name or number", search, { search = it })
+            val shown = customers.filter { search.isBlank() || it.name.contains(search.trim(), true) || it.phone.filter { d -> d.isDigit() }.contains(search.filter { d -> d.isDigit() }.ifBlank { "#" }) }
+            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                if (shown.isNotEmpty() && search.isNotBlank()) item { Spacer(Modifier.height(8.dp)); Label("Your customers", color = Z.neon) }
+                items(shown, key = { it.id }) { c ->
                     ListRow(c.name, c.address.ifBlank { c.phone }.uppercase(), onClick = { onPick(c) })
                 }
+                item { ContactResults(search, customers) { c -> onNew(c) } }
             }
         }
     }

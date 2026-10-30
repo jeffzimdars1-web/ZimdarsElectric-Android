@@ -316,7 +316,8 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
         }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 22.dp)) {
             val shown = customers.filter { search.isBlank() || it.name.contains(search, true) || it.address.contains(search, true) || it.phone.contains(search) }
-            if (shown.isEmpty()) item { Text("No customers yet.", color = Z.muted, modifier = Modifier.padding(vertical = 14.dp)) }
+            if (shown.isEmpty() && search.isBlank()) item { Text("No customers yet. Search above to find someone in your phone contacts.", color = Z.muted, modifier = Modifier.padding(vertical = 14.dp)) }
+            if (search.trim().length >= 2) item { ContactResults(search, customers) { c -> editing = c } }
             items(shown, key = { it.id }) { c ->
                 Column(Modifier.clickable { editing = c }.padding(vertical = 12.dp)) {
                     Text(c.name, color = Z.text, fontSize = 18.sp)
