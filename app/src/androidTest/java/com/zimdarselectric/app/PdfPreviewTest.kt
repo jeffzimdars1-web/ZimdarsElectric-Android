@@ -50,6 +50,14 @@ class PdfPreviewTest {
             "signed" to QuotePdf.customerCopy(ctx, signed, lines, cust, s),
             "job" to QuotePdf.jobCopy(ctx, signed, lines, mats, cust, s),
             "short-repair" to QuotePdf.customerCopy(ctx, short, lines.take(3), cust, s),
+            "st124" to com.zimdarselectric.app.data.St124Pdf.make(ctx, signed.copy(site = "110 State Street, Prospect, NY 13435"),
+                cust.copy(address = "12 Main St, Ilion, NY 13357"), s.copy(ownerSignaturePath = sigFile.path, address = "6221 State Route 26, Rome, NY 13440"),
+                "Pat Sample", sigFile, "owner", "not", System.currentTimeMillis()),
+            "both-photos" to QuotePdf.customerCopy(ctx, signed.copy(number = "Q-0009", jobType = JobType.BOTH, repairHours = 2.0,
+                repairNotes = "Replace the light and junction box at the top of the stairway."),
+                lines.take(4).mapIndexed { i, l -> l.copy(repair = i % 2 == 1) }, cust, s,
+                listOf(com.zimdarselectric.app.data.JobPhoto(quoteId = 7, path = sigFile.path, caption = "Before · panel", onCustomerCopy = true),
+                    com.zimdarselectric.app.data.JobPhoto(quoteId = 7, path = sigFile.path, caption = "After", onCustomerCopy = true))),
         ).forEach { (name, pdf) ->
             ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                 PdfRenderer(fd).use { r ->

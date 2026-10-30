@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["app/src/main/java/com/zimdarselectric/app/data/QuotePdf.kt", "app/src/androidTest/**", ".github/workflows/pdf-preview.yml"]
+    paths: ["app/src/main/java/com/zimdarselectric/app/data/QuotePdf.kt", "app/src/main/java/com/zimdarselectric/app/data/St124Pdf.kt", "app/src/androidTest/**", ".github/workflows/pdf-preview.yml"]
 permissions:
   contents: write
 jobs:
