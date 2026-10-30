@@ -578,6 +578,9 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
 
             SectionHeader("09", "Quote numbers")
             NumField("Next quote number", s.nextQuoteNo.toDouble(), "nq") { save(s.copy(nextQuoteNo = it.toInt().coerceAtLeast(1))) }
+
+            SectionHeader("10", "Backup")
+            BackupSection()
             Spacer(Modifier.height(40.dp))
         }
     }
@@ -585,3 +588,70 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun Gap() = Spacer(Modifier.height(8.dp))
+
+
+/** Nightly backup status, Back up now, and Restore. */
+@Composable
+private fun BackupSection() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var last by remember { mutableStateOf(com.zimdarselectric.app.data.Backup.lastBackup(context)) }
+    var status by remember { mutableStateOf(com.zimdarselectric.app.data.Backup.lastError(context)?.let { "Last try: $it" }) }
+    var busy by remember { mutableStateOf(false) }
+    var list by remember { mutableStateOf<List<com.zimdarselectric.app.data.Backup.Entry>?>(null) }
+    var confirm by remember { mutableStateOf<com.zimdarselectric.app.data.Backup.Entry?>(null) }
+    val fmt = java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.US)
+    Text("Everything in the app (quotes, customers, books, stock, receipt copies, photos) is copied to your private Supabase every night when you have internet. The last 14 days are kept.",
+        color = Z.muted, fontSize = 13.sp)
+    Spacer(Modifier.height(8.dp))
+    if (last > 0) StatusDot("Last backup ${fmt.format(java.util.Date(last))}", Z.ok) else StatusDot("No backup yet", Z.warn)
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GhostButton(if (busy) "Working…" else "Back up now", Modifier.weight(1f)) {
+            if (!busy) { busy = true; status = null
+                scope.launch { status = com.zimdarselectric.app.data.Backup.backupNow(context); last = com.zimdarselectric.app.data.Backup.lastBackup(context); busy = false } }
+        }
+        GhostButton("Restore…", Modifier.weight(1f)) {
+            if (!busy) { busy = true; status = null
+                scope.launch {
+                    runCatching { com.zimdarselectric.app.data.Backup.list(context) }
+                        .onSuccess { list = it; if (it.isEmpty()) status = "No backups yet." }
+                        .onFailure { status = it.message }
+                    busy = false
+                } }
+        }
+    }
+    status?.let { Text(it, color = Z.neon, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
+    list?.takeIf { it.isNotEmpty() }?.let { items ->
+        Spacer(Modifier.height(8.dp))
+        Label("Pick a backup to restore")
+        items.forEach { e ->
+            Row(Modifier.fillMaxWidth().clickable { confirm = e }.padding(vertical = 10.dp)) {
+                Text(e.label, color = Z.text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                Label("%.1f MB".format(e.size / 1_048_576.0))
+            }
+            Divider()
+        }
+    }
+    confirm?.let { e ->
+        ZDialog("Restore this backup?", { confirm = null },
+            confirm = "Restore" to {
+                confirm = null; busy = true; status = "Restoring… don't close the app."
+                scope.launch {
+                    runCatching { com.zimdarselectric.app.data.Backup.restore(context, e.name) }
+                        .onSuccess {
+                            // Reopen the app on the restored data.
+                            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)!!
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            val pi = android.app.PendingIntent.getActivity(context, 9, launch, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_CANCEL_CURRENT)
+                            context.getSystemService(android.app.AlarmManager::class.java).set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 800, pi)
+                            Runtime.getRuntime().exit(0)
+                        }
+                        .onFailure { status = it.message ?: "Restore failed. Nothing was changed."; busy = false }
+                }
+            },
+            dismiss = "Cancel" to { confirm = null }) {
+            Text("Everything on this phone is replaced with the backup from ${e.label}. Anything you added after that is lost. The app restarts when it's done.", color = Z.muted)
+        }
+    }
+}

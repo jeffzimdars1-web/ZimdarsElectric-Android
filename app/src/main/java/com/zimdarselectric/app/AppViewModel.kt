@@ -60,6 +60,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         runCatching { SignService.scheduleBackgroundCheck(app) }
+        runCatching { com.zimdarselectric.app.data.Backup.schedule(app) }
         // Keep job reminders matched to quote dates and reminder settings.
         viewModelScope.launch {
             combine(dao.quotes(), dao.settings()) { q, s -> q to (s ?: Settings()) }
