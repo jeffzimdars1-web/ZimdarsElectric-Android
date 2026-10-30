@@ -370,6 +370,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveLine(l: QuoteLine) = viewModelScope.launch { dao.updateLine(l); touch(l.quoteId) }
     fun deleteLine(l: QuoteLine) = viewModelScope.launch { dao.deleteLine(l); touch(l.quoteId) }
 
+    /**
+     * Adds the camera build's material list to a quote. Items you stock are linked (so they're held for the job)
+     * and priced at what you paid; the rest are added at $0 for you to price. Same items already on the quote get the amount added.
+     */
+    fun addBuildToQuote(quoteId: Long, t: com.zimdarselectric.app.data.JobBuild.Takeoff) = viewModelScope.launch {
+        fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9/.]+"), " ").trim()
+        val stock = dao.materialsNow()
+        val existing = dao.linesFor(quoteId)
+        for (l in t.lines) {
+            val m = stock.firstOrNull { norm(it.name) == norm(l.name) }
+            val same = existing.firstOrNull { (m != null && it.materialId == m.id) || (it.materialId == null && norm(it.name) == norm(l.name)) }
+            if (same != null) dao.updateLine(same.copy(qty = same.qty + l.qty))
+            else dao.insertLine(QuoteLine(quoteId = quoteId, materialId = m?.id, name = m?.name ?: l.name, unit = l.unit, qty = l.qty, unitCost = m?.cost ?: 0.0))
+        }
+        dao.quote(quoteId)?.let { q ->
+            val summary = buildList {
+                t.feetByRun.forEach { (type, ft) -> add("${type.label} ${Math.round(ft)} ft") }
+                if (t.holes > 0) add("${t.holes} stud holes")
+            }.joinToString(", ")
+            val note = "Camera build: $summary".trim()
+            dao.updateQuote(q.copy(notes = if (q.notes.isBlank()) note else q.notes + "\n" + note, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
     private suspend fun touch(quoteId: Long) {
         dao.quote(quoteId)?.let { dao.updateQuote(it.copy(updatedAt = System.currentTimeMillis())) }
     }
