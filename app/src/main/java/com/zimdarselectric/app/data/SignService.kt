@@ -57,7 +57,7 @@ object SignService {
     }
 
     /** What the customer sees: a snapshot of the quote at the moment it's sent. */
-    fun payload(q: Quote, lines: List<QuoteLine>, customer: Customer?, s: Settings): JSONObject {
+    fun payload(q: Quote, lines: List<QuoteLine>, customer: Customer?, s: Settings, changeOf: String? = null): JSONObject {
         val t = computeTotals(q, lines, s)
         val factor = 1 + q.markupPct / 100.0
         fun r2(v: Double) = Math.round(v * 100) / 100.0
@@ -82,7 +82,20 @@ object SignService {
                 .put("subtotal", r2(t.materialsPrice + t.labor)).put("taxRate", q.taxRatePct).put("tax", r2(t.salesTax)).put("total", r2(t.total)))
             .put("terms", JSONObject().put("rates", s.chargeNote).put("payment", s.paymentTerms).put("warranty", s.warranty))
             .put("notices", JSONArray(contractNotices(s)))
+            .apply {
+                if (q.needsSt124) put("st124", st124Info(q))
+                if (changeOf != null) getJSONObject("quote").put("changeOf", changeOf)
+            }
     }
+
+    fun st124Info(q: Quote): JSONObject = JSONObject().put("number", q.number).put("project", q.title)
+        .put("site", q.site).put("description", St124Pdf.description(q))
+
+    /** The ST-124-only page (for a job already signed or done). */
+    fun st124Payload(q: Quote, customer: Customer?, s: Settings): JSONObject = JSONObject()
+        .put("business", JSONObject().put("name", s.businessName).put("phone", s.phone).put("email", s.email).put("address", s.address))
+        .put("customer", JSONObject().put("name", customer?.name ?: q.customerName).put("address", customer?.address?.ifBlank { q.site } ?: q.site))
+        .put("st124", st124Info(q))
 
     /** Plain-language notices for a NY home improvement agreement. */
     fun contractNotices(s: Settings): List<String> = listOf(
@@ -111,6 +124,11 @@ object SignService {
         Link(r.getString("token"), r.getString("url"))
     }
 
+    /** Shows "Paid" on the invoice page. */
+    suspend fun markInvoicePaid(key: String, token: String) = withContext(Dispatchers.IO) {
+        call(key, JSONObject().put("action", "paid").put("t", token))
+    }
+
     suspend fun cancel(key: String, token: String) = withContext(Dispatchers.IO) {
         call(key, JSONObject().put("action", "cancel").put("t", token))
     }
@@ -129,29 +147,62 @@ object SignService {
 
     private suspend fun syncLocked(context: Context): List<Quote> = withContext(Dispatchers.IO) {
         val dao = AppDb.get(context).dao()
-        val key = dao.settingsNow()?.signKey?.trim().orEmpty()
+        val settings = dao.settingsNow()
+        val key = settings?.signKey?.trim().orEmpty()
         val waiting = dao.quotesAwaitingSignature()
-        if (key.isBlank() || waiting.isEmpty()) return@withContext emptyList()
-        val r = call(key, JSONObject().put("action", "status").put("tokens", JSONArray(waiting.map { it.signToken })))
+        val waitingSt = dao.quotesAwaitingSt124()
+        if (key.isBlank() || (waiting.isEmpty() && waitingSt.isEmpty())) return@withContext emptyList()
+        val tokens = waiting.map { it.signToken } + waitingSt.map { it.st124Token }
+        val r = call(key, JSONObject().put("action", "status").put("tokens", JSONArray(tokens)))
         val items = r.optJSONArray("items") ?: return@withContext emptyList()
         val justSigned = mutableListOf<Quote>()
+        fun saveSignature(item: JSONObject, name: String): File? {
+            val png = item.optString("signature_png").substringAfter("base64,", "")
+            val file = File(context.filesDir, "signatures").apply { mkdirs() }.let { d -> File(d, name) }
+            if (png.isNotBlank()) runCatching { file.writeBytes(Base64.decode(png, Base64.DEFAULT)) }
+            return file.takeIf { it.exists() }
+        }
+        suspend fun makeSt124(q: Quote, item: JSONObject, sig: File?, signedAt: Long): String {
+            val st = item.optJSONObject("st124") ?: return ""
+            val customer = q.customerId?.let { dao.customer(it) }
+            return runCatching {
+                St124Pdf.make(context, q, customer, settings ?: Settings(), item.optString("signer_name"), sig,
+                    st.optString("role", "owner"), st.optString("contract", "not"), signedAt).absolutePath
+            }.getOrDefault("")
+        }
         for (i in 0 until items.length()) {
             val item = items.getJSONObject(i)
-            val q = dao.quote(waiting.firstOrNull { w -> w.signToken == item.optString("token") }?.id ?: continue) ?: continue
-            if (q.signedAt != null || q.signToken != item.optString("token")) continue
+            val token = item.optString("token")
             val viewed = parseIso(item.optString("viewed_at"))
+            // ST-124 on its own
+            waitingSt.firstOrNull { it.st124Token == token }?.let { w ->
+                val q = dao.quote(w.id) ?: return@let
+                if (item.optString("status") == "signed" && q.st124SignedAt == null) {
+                    val at = parseIso(item.optString("signed_at")) ?: System.currentTimeMillis()
+                    val sig = saveSignature(item, "${q.number}_${q.id}_st124.png")
+                    val path = makeSt124(q, item, sig, at)
+                    val updated = q.copy(st124SignedAt = at, st124Path = path)
+                    dao.updateQuote(updated)
+                    notifySt124(context, updated)
+                }
+                return@let
+            }
+            val q = dao.quote(waiting.firstOrNull { w -> w.signToken == token }?.id ?: continue) ?: continue
+            if (q.signedAt != null || q.signToken != token) continue
             when (item.optString("status")) {
                 "signed" -> {
-                    val png = item.optString("signature_png").substringAfter("base64,", "")
-                    val file = File(context.filesDir, "signatures").apply { mkdirs() }.let { d -> File(d, "${q.number}_${q.id}.png") }
-                    if (png.isNotBlank()) runCatching { file.writeBytes(Base64.decode(png, Base64.DEFAULT)) }
+                    val sig = saveSignature(item, "${q.number}_${q.id}.png")
                     val signedAt = parseIso(item.optString("signed_at")) ?: System.currentTimeMillis()
-                    val updated = q.copy(
+                    var updated = q.copy(
                         signedAt = signedAt, viewedAt = viewed ?: q.viewedAt,
                         signerName = item.optString("signer_name"), signerIp = item.optString("signer_ip").takeIf { ip -> ip != "null" } ?: "",
-                        signaturePath = if (file.exists()) file.absolutePath else "",
+                        signaturePath = sig?.absolutePath ?: "",
                         status = if (q.status in setOf(Status.DRAFT, Status.SENT)) Status.APPROVED else q.status,
                     )
+                    if (item.optJSONObject("st124") != null) {
+                        val path = makeSt124(updated, item, sig, signedAt)
+                        if (path.isNotBlank()) updated = updated.copy(st124SignedAt = signedAt, st124Path = path)
+                    }
                     dao.updateQuote(updated)
                     justSigned += updated
                 }
@@ -166,6 +217,18 @@ object SignService {
             }
         }
         justSigned
+    }
+
+    fun notifySt124(context: Context, q: Quote) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "Customer signatures", NotificationManager.IMPORTANCE_HIGH))
+        val open = PendingIntent.getActivity(context, 400_000 + q.id.toInt(), Intent(context, MainActivity::class.java).putExtra(Reminders.EXTRA_QUOTE, q.id)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_stat_bolt)
+            .setContentTitle("${q.customerName.ifBlank { "Customer" }} signed the ST-124")
+            .setContentText("${q.number} · saved with the job").setContentIntent(open).setAutoCancel(true).build()
+        runCatching { NotificationManagerCompat.from(context).notify(400_000 + q.id.toInt(), n) }
     }
 
     // ---------- Notifications ----------

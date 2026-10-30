@@ -155,7 +155,26 @@ data class Quote(
     @ColumnInfo(defaultValue = "0") val repairHours: Double = 0.0,
     /** Install + repair jobs: what the repair work is (the customer sees this). */
     @ColumnInfo(defaultValue = "") val repairNotes: String = "",
+    // NY Form ST-124 (capital improvement), signed online by the customer.
+    @ColumnInfo(defaultValue = "") val st124Token: String = "",
+    @ColumnInfo(defaultValue = "") val st124Url: String = "",
+    val st124SentAt: Long? = null,
+    val st124SignedAt: Long? = null,
+    /** The filled-in, signed ST-124 PDF on the phone. */
+    @ColumnInfo(defaultValue = "") val st124Path: String = "",
+    /** Change order: the job this adds to. */
+    val parentId: Long? = null,
+    // Invoice sent by text, with automatic reminders.
+    @ColumnInfo(defaultValue = "") val invoiceToken: String = "",
+    @ColumnInfo(defaultValue = "") val invoiceUrl: String = "",
+    val invoiceSentAt: Long? = null,
+    val invoiceRemindedAt: Long? = null,
+    /** Text the customer a review link the day after the job is done. */
+    @ColumnInfo(defaultValue = "1") val askReview: Boolean = true,
+    val reviewAskedAt: Long? = null,
 ) {
+    /** Install work here needs a signed ST-124 (new install, or the install part of install + repair). */
+    val needsSt124: Boolean get() = kind == Kind.QUOTE && (jobType == JobType.INSTALL || jobType == JobType.BOTH)
     /** Hours to block on the calendar. */
     val blockHours: Double get() = if (hoursOnSite > 0) hoursOnSite else laborHours + if (jobType == JobType.BOTH) repairHours else 0.0
     val awaitingSignature: Boolean get() = signToken.isNotBlank() && signedAt == null && confirmedAt == null
@@ -265,6 +284,35 @@ data class Settings(
     @ColumnInfo(defaultValue = "60") val remindMinutesBefore: Int = 60,
     /** Key that lets this phone create signing links. Kept only on the phone. */
     @ColumnInfo(defaultValue = "") val signKey: String = "",
+    // Getting paid
+    @ColumnInfo(defaultValue = "") val venmo: String = "",
+    @ColumnInfo(defaultValue = "") val zelle: String = "",
+    /** Extra payment line on invoices (e.g. "Checks payable to Zimdars Electric LLC"). */
+    @ColumnInfo(defaultValue = "") val payNote: String = "",
+    @ColumnInfo(defaultValue = "7") val invoiceReminderDays: Int = 7,
+    /** Google review link for the review request text. Blank = don't ask. */
+    @ColumnInfo(defaultValue = "") val reviewUrl: String = "",
+    // Taxes (estimates)
+    /** Your federal income tax bracket, for the quarterly estimate. */
+    @ColumnInfo(defaultValue = "12") val fedTaxPct: Double = 12.0,
+    /** NY State income tax, roughly. */
+    @ColumnInfo(defaultValue = "5.5") val stateTaxPct: Double = 5.5,
+    /** NY sales tax Certificate of Authority number (prints on ST-124). */
+    @ColumnInfo(defaultValue = "") val coaNumber: String = "",
+    /** Your own signature (drawn once), for the contractor line on ST-124. */
+    @ColumnInfo(defaultValue = "") val ownerSignaturePath: String = "",
+)
+
+/** A photo taken on a job (before / after / problem found). */
+@Entity
+data class JobPhoto(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val quoteId: Long,
+    val path: String,
+    val takenAt: Long = System.currentTimeMillis(),
+    val caption: String = "",
+    /** Include on the customer's PDF. */
+    val onCustomerCopy: Boolean = false,
 )
 
 /** Schedule C expense categories, so receipts land on the right tax line. */
@@ -292,6 +340,13 @@ val ExpenseCategories = listOf(
 interface AppDao {
     @Query("SELECT * FROM Customer ORDER BY name COLLATE NOCASE")
     fun customers(): Flow<List<Customer>>
+
+    @Query("SELECT * FROM JobPhoto ORDER BY takenAt") fun photos(): Flow<List<JobPhoto>>
+    @Query("SELECT * FROM JobPhoto WHERE quoteId = :quoteId ORDER BY takenAt") suspend fun photosFor(quoteId: Long): List<JobPhoto>
+    @Insert suspend fun insertPhoto(p: JobPhoto): Long
+    @Update suspend fun updatePhoto(p: JobPhoto)
+    @Delete suspend fun deletePhoto(p: JobPhoto)
+    @Query("SELECT * FROM Quote WHERE st124Token != '' AND st124SignedAt IS NULL") suspend fun quotesAwaitingSt124(): List<Quote>
 
     @Insert suspend fun insertCustomer(c: Customer): Long
 
@@ -331,6 +386,9 @@ interface AppDao {
 
     @Query("SELECT * FROM QuoteLine")
     fun allLines(): Flow<List<QuoteLine>>
+
+    @Query("SELECT * FROM QuoteLine")
+    suspend fun allLinesNow(): List<QuoteLine>
 
     @Query("SELECT * FROM QuoteLine WHERE quoteId = :quoteId")
     suspend fun linesFor(quoteId: Long): List<QuoteLine>
@@ -423,6 +481,36 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
 val MIGRATION_15_16 = object : Migration(15, 16) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `Quote` ADD COLUMN `confirmedAt` INTEGER")
+    }
+}
+
+/** Version 19: ST-124 signing, change orders, invoices, review requests, job photos, tax settings. */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf(
+            "ALTER TABLE `Quote` ADD COLUMN `st124Token` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Quote` ADD COLUMN `st124Url` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Quote` ADD COLUMN `st124SentAt` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `st124SignedAt` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `st124Path` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Quote` ADD COLUMN `parentId` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `invoiceToken` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Quote` ADD COLUMN `invoiceUrl` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Quote` ADD COLUMN `invoiceSentAt` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `invoiceRemindedAt` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `askReview` INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE `Quote` ADD COLUMN `reviewAskedAt` INTEGER",
+            "ALTER TABLE `Settings` ADD COLUMN `venmo` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `zelle` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `payNote` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `invoiceReminderDays` INTEGER NOT NULL DEFAULT 7",
+            "ALTER TABLE `Settings` ADD COLUMN `reviewUrl` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `fedTaxPct` REAL NOT NULL DEFAULT 12",
+            "ALTER TABLE `Settings` ADD COLUMN `stateTaxPct` REAL NOT NULL DEFAULT 5.5",
+            "ALTER TABLE `Settings` ADD COLUMN `coaNumber` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `ownerSignaturePath` TEXT NOT NULL DEFAULT ''",
+            "CREATE TABLE IF NOT EXISTS `JobPhoto` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `quoteId` INTEGER NOT NULL, `path` TEXT NOT NULL, `takenAt` INTEGER NOT NULL, `caption` TEXT NOT NULL, `onCustomerCopy` INTEGER NOT NULL)",
+        ).forEach { db.execSQL(it) }
     }
 }
 
@@ -522,8 +610,8 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 }
 
 @Database(
-    entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class],
-    version = 18,
+    entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class, JobPhoto::class],
+    version = 19,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -535,7 +623,7 @@ abstract class AppDb : RoomDatabase() {
         fun close() = synchronized(this) { instance?.close(); instance = null }
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                 .build().also { instance = it }
         }
     }

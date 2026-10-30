@@ -58,6 +58,12 @@
   .signed .badge { color: var(--ok); font: 700 20px var(--cond); text-transform: uppercase; }
   .signed img { max-width: 320px; width: 100%; display: block; margin: 8px 0; border-bottom: 1px solid var(--ink); }
   .center { padding: 60px 20px; text-align: center; }
+  .st124 { border: 1px solid #9aa2a8; background: #f6f7f3; padding: 14px; margin: 16px 0 6px; }
+  .st124 .opts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 6px 0 10px; font-size: 15px; }
+  .st124 .opts label { display: flex; align-items: center; gap: 8px; }
+  .st124 .opts input { width: 22px; height: 22px; accent-color: var(--ink); }
+  .st124 .q { font-size: 14px; font-weight: 600; margin-top: 8px; }
+  ul.cert { font-size: 14px; padding-left: 20px; } ul.cert li { margin: 4px 0; }
   .print { margin-top: 14px; }
   @media print {
     body { background: #fff; }
@@ -110,6 +116,7 @@
     .catch(function () { message("Can't load the quote", "Check your connection and open the link again."); });
 
   function render(d) {
+    if (d.kind === "st124") { renderSt124(d); return; }
     var p = d.payload || {}, b = p.business || {}, c = p.customer || {}, q = p.quote || {}, t = p.totals || {}, terms = p.terms || {};
     document.title = (b.name || "Quote") + " · " + (q.number || d.quote_number);
     app.innerHTML = "";
@@ -126,7 +133,7 @@
     app.appendChild(m);
 
     m.appendChild(el("div", { cls: "title-row" }, [
-      el("div", null, [el("div", { cls: "kicker", text: "Quote" }), el("div", { cls: "qnum", text: q.number || d.quote_number })]),
+      el("div", null, [el("div", { cls: "kicker", text: q.changeOf ? "Change order to " + q.changeOf : "Quote" }), el("div", { cls: "qnum", text: q.number || d.quote_number })]),
       el("div", { cls: "muted", style: "text-align:right;font-size:14px" }, [
         el("div", { text: "Date: " + day(q.date) }),
         q.validUntil ? el("div", { text: "Good until: " + day(q.validUntil) }) : null,
@@ -211,14 +218,88 @@
     (p.notices || []).forEach(function (n) { notices.appendChild(el("p", { text: n })); });
     m.appendChild(notices);
 
-    if (d.status === "signed") { m.appendChild(signedBlock(d.signer_name, d.signed_at, d.signature_png, b)); return; }
+    if (d.status === "signed") { m.appendChild(signedBlock(d.signer_name, d.signed_at, d.signature_png, b, d.st124)); return; }
     if (d.status !== "sent") return;
-    m.appendChild(signBlock(d, b));
+    m.appendChild(signBlock(d, b, p.st124 ? "quote+st124" : "quote"));
   }
 
-  function signedBlock(name, at, png, b) {
+  // ---- Form ST-124 on its own (for work already done or quoted earlier) ----
+  function renderSt124(d) {
+    var p = d.payload || {}, b = p.business || {}, c = p.customer || {}, f = p.st124 || {};
+    document.title = (b.name || "Contractor") + " · Form ST-124";
+    app.innerHTML = "";
+    app.appendChild(el("header", null, [
+      el("h1", { text: b.name || "Contractor" }),
+      el("div", { cls: "contact", text: [b.phone, b.email, b.address].filter(Boolean).join(" · ") }),
+    ]));
+    var m = el("main"); app.appendChild(m);
+    m.appendChild(el("div", { cls: "title-row" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "New York State Form ST-124" }), el("div", { cls: "qnum", text: "Certificate of Capital Improvement" })]),
+      el("div", { cls: "muted", style: "text-align:right;font-size:14px", text: "Ref. " + (f.number || d.quote_number) }),
+    ]));
+    if (d.status === "canceled") m.appendChild(el("div", { cls: "note", text: "This form was replaced or canceled. Please contact the contractor." }));
+    m.appendChild(el("div", { cls: "grid" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "Customer" }), el("div", { text: c.name || "" }), el("div", { cls: "muted", text: c.address || "" })]),
+      el("div", null, [el("div", { cls: "kicker", text: "Contractor" }), el("div", { text: b.name || "" }), el("div", { cls: "muted", text: b.address || "" })]),
+      el("div", { style: "grid-column:1/-1" }, [el("div", { cls: "kicker", text: "Where the work is (was) performed" }), el("div", { text: f.site || "" })]),
+    ]));
+    m.appendChild(el("h2", { text: "Capital improvement" }));
+    if (f.project) m.appendChild(el("p", { style: "font-weight:600;margin:4px 0", text: f.project }));
+    m.appendChild(el("p", { cls: "scope", text: f.description || "" }));
+    m.appendChild(el("h2", { text: "What you're certifying" }));
+    m.appendChild(el("ul", { cls: "cert" }, [
+      el("li", { text: "You are the owner or tenant (chosen below) of the property above." }),
+      el("li", { text: "The work above results in a capital improvement to the property." }),
+      el("li", { text: "You'll be responsible for any sales tax, interest and penalty due if the work is found not to qualify as a capital improvement, and you'll pay sales tax on any items that don't become a permanent part of the property." }),
+      el("li", { text: "Issuing a false or fraudulent certificate can bring civil or criminal penalties under the Tax Law." }),
+    ]));
+    m.appendChild(el("p", { style: "font-size:14px" }, [el("a", { href: "https://www.tax.ny.gov/pdf/current_forms/st/st124_fill_in.pdf", target: "_blank", rel: "noopener", text: "Read the official Form ST-124 →" })]));
+    if (d.status === "signed") { m.appendChild(signedBlock(d.signer_name, d.signed_at, d.signature_png, b, d.st124)); return; }
+    if (d.status !== "sent") return;
+    m.appendChild(signBlock(d, b, "st124"));
+  }
+
+  // Owner/tenant and "includes" choices for ST-124. Returns {node, value()}.
+  function st124Choices(withAgree, agreeText) {
+    var box = el("div", { cls: "st124" });
+    if (withAgree) {
+      box.appendChild(el("div", { cls: "kicker", text: "NY sales tax form ST-124" }));
+      box.appendChild(el("p", { style: "font-size:14px;margin:6px 0", text: "The new installation is a capital improvement, so New York requires Form ST-124 for it to be free of sales tax. Your signature below also signs that form for this job." }));
+    }
+    function radios(name, opts) {
+      var row = el("div", { cls: "opts" });
+      opts.forEach(function (o) {
+        var r = el("input", { type: "radio", name: name, value: o[0] }); if (o[2]) r.checked = true;
+        row.appendChild(el("label", null, [r, el("span", { text: o[1] })]));
+      });
+      return row;
+    }
+    box.appendChild(el("div", { cls: "q", text: "I am the … of this property" }));
+    box.appendChild(radios("st_role", [["owner", "Owner"], ["tenant", "Tenant"]]));
+    box.appendChild(el("div", { cls: "q", text: "This job includes items that won't become a permanent part of the property (like a free-standing appliance)" }));
+    box.appendChild(radios("st_contract", [["not", "No, it does not", true], ["includes", "Yes, it includes some"]]));
+    var ag = null;
+    if (withAgree) {
+      ag = el("input", { type: "checkbox", id: "stag" });
+      box.appendChild(el("label", { cls: "agree", "for": "stag" }, [ag, el("span", { text: agreeText })]));
+      box.appendChild(el("p", { style: "font-size:13px;margin:4px 0 0" }, [el("a", { href: "https://www.tax.ny.gov/pdf/current_forms/st/st124_fill_in.pdf", target: "_blank", rel: "noopener", text: "Read the official Form ST-124 →" })]));
+    }
+    return {
+      node: box,
+      value: function () {
+        var role = box.querySelector("input[name=st_role]:checked"), con = box.querySelector("input[name=st_contract]:checked");
+        if (!role) return { error: "Please choose whether you're the owner or tenant." };
+        if (!con) return { error: "Please answer the ST-124 question." };
+        if (ag && !ag.checked) return { error: "Please check the box to sign Form ST-124." };
+        return { role: role.value, contract: con.value };
+      },
+    };
+  }
+
+  function signedBlock(name, at, png, b, st) {
     return el("div", { cls: "signed" }, [
       el("div", { cls: "badge", text: "✓ Signed" }),
+      st ? el("div", { cls: "muted", style: "font-size:14px", text: "Includes Form ST-124 (Certificate of Capital Improvement), signed as the " + st.role + "." }) : null,
       png ? el("img", { src: png, alt: "Signature of " + name }) : null,
       el("div", { text: name }),
       el("div", { cls: "muted", text: "Signed electronically " + stamp(at) }),
@@ -227,21 +308,25 @@
     ]);
   }
 
-  function signBlock(d, b) {
+  function signBlock(d, b, mode) {
     var box = el("div", { cls: "signbox noprint" });
-    box.appendChild(el("div", { cls: "kicker", text: "To approve, sign below" }));
+    box.appendChild(el("div", { cls: "kicker", text: mode === "st124" ? "To sign Form ST-124" : "To approve, sign below" }));
+    var st = mode === "st124" ? st124Choices(false) : mode === "quote+st124" ? st124Choices(true, d.agree_st124) : null;
+    if (st && mode === "st124") box.appendChild(st.node);
     box.appendChild(el("label", { cls: "field", "for": "nm", text: "Your full name" }));
     var name = el("input", { id: "nm", type: "text", autocomplete: "name", maxlength: "100" });
     box.appendChild(name);
     var chk = el("input", { type: "checkbox", id: "ag" });
     box.appendChild(el("label", { cls: "agree", "for": "ag" }, [chk, el("span", { text: d.agree_text })]));
+    if (st && mode === "quote+st124") box.appendChild(st.node);
     box.appendChild(el("label", { cls: "field", text: "Sign with your finger" }));
     var canvas = el("canvas", { id: "pad", "aria-label": "Signature pad" });
     box.appendChild(el("div", { cls: "pad-wrap" }, [canvas, el("div", { cls: "pad-line" }), el("div", { cls: "pad-x", text: "×" })]));
     var clear = el("button", { cls: "link", type: "button", text: "Clear signature" });
     box.appendChild(el("div", { cls: "row" }, [el("span", { cls: "muted", style: "font-size:13px", text: "Signing as the owner or someone allowed to approve this work." }), clear]));
     var err = el("div", { cls: "err", role: "alert" });
-    var btn = el("button", { cls: "btn", type: "button", text: "Sign and approve" });
+    var btnText = mode === "st124" ? "Sign Form ST-124" : "Sign and approve";
+    var btn = el("button", { cls: "btn", type: "button", text: btnText });
     box.appendChild(btn); box.appendChild(err);
 
     // Signature pad
@@ -285,19 +370,21 @@
       var n = name.value.trim();
       if (n.length < 2) { err.textContent = "Please type your full name."; name.focus(); return; }
       if (!chk.checked) { err.textContent = "Please check the box to agree."; return; }
+      var stv = null;
+      if (st) { stv = st.value(); if (stv.error) { err.textContent = stv.error; return; } }
       var sig = drawn ? signaturePng() : null;
       if (!sig) { err.textContent = "Please sign in the box with your finger."; return; }
       btn.disabled = true; btn.textContent = "Signing…";
-      fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", t: token, name: n, agree: true, signature: sig }) })
+      fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", t: token, name: n, agree: true, signature: sig, st124: stv }) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
-          if (res.ok) { box.replaceWith(signedBlock(n, res.j.signed_at, sig, b)); wirePrint(); window.scrollTo(0, document.body.scrollHeight); return; }
+          if (res.ok) { box.replaceWith(signedBlock(n, res.j.signed_at, sig, b, stv)); wirePrint(); window.scrollTo(0, document.body.scrollHeight); return; }
           if (res.j.error === "already_signed") { location.reload(); return; }
           if (res.j.error === "canceled") { err.textContent = "This quote was replaced or canceled. Please contact the contractor."; return; }
           throw new Error();
         })
         .catch(function () { err.textContent = "Couldn't send. Check your connection and tap Sign again."; })
-        .finally(function () { if (btn.isConnected) { btn.disabled = false; btn.textContent = "Sign and approve"; } });
+        .finally(function () { if (btn.isConnected) { btn.disabled = false; btn.textContent = btnText; } });
     });
     return box;
   }

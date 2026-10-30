@@ -109,6 +109,33 @@ object QuotePdf {
             y += 8f
         }
 
+        /** Job photos, two across, with captions. */
+        fun photos(list: List<JobPhoto>) {
+            if (list.isEmpty()) return
+            section("Photos")
+            val gap = 12f; val colW = (W - 2 * M - gap) / 2
+            list.chunked(2).forEach { row ->
+                val bmps = row.map { p ->
+                    val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeFile(p.path, o)
+                    var sample = 1; while (o.outWidth / (sample * 2) >= 700) sample *= 2
+                    BitmapFactory.decodeFile(p.path, BitmapFactory.Options().apply { inSampleSize = sample })
+                }
+                val hs = bmps.map { b -> if (b == null) 0f else minOf(colW * b.height / b.width, 230f) }
+                val rowH = (hs.maxOrNull() ?: 0f) + 26f
+                need(rowH)
+                row.forEachIndexed { i, p ->
+                    val b = bmps[i] ?: return@forEachIndexed
+                    val h = hs[i]; val w = h * b.width / b.height
+                    val x = M + i * (colW + gap)
+                    c.drawBitmap(b, null, RectF(x, y, x + w, y + h), Paint(Paint.FILTER_BITMAP_FLAG))
+                    val cap = listOf(p.caption, java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(Date(p.takenAt))).filter { it.isNotBlank() }.joinToString(" · ")
+                    c.drawText(cap.take(60), x, y + h + 11f, small)
+                    b.recycle()
+                }
+                y += rowH
+            }
+        }
+
         fun finish(): PdfDocument { page?.let { doc.finishPage(it) }; return doc }
     }
 
@@ -148,7 +175,7 @@ object QuotePdf {
 
     // ---------------- Customer copy ----------------
 
-    fun customerCopy(ctx: Context, q: Quote, lines: List<QuoteLine>, customer: Customer?, s: Settings): File {
+    fun customerCopy(ctx: Context, q: Quote, lines: List<QuoteLine>, customer: Customer?, s: Settings, photos: List<JobPhoto> = emptyList()): File {
         val t = computeTotals(q, lines, s)
         val factor = 1 + q.markupPct / 100.0
         val signed = q.signedAt != null
@@ -235,6 +262,8 @@ object QuotePdf {
                 para("The new installation is a capital improvement to your property, so it has no sales tax; you'll sign New York State form ST-124 for that part. Sales tax is charged on the repair part only.", small)
             }
 
+            photos(photos)
+
             section("Terms")
             if (s.chargeNote.isNotBlank()) para("How I charge: " + s.chargeNote)
             if (s.paymentTerms.isNotBlank()) para("Payment: " + s.paymentTerms)
@@ -273,7 +302,7 @@ object QuotePdf {
 
     // ---------------- Job copy (yours) ----------------
 
-    fun jobCopy(ctx: Context, q: Quote, lines: List<QuoteLine>, materials: List<Material>, customer: Customer?, s: Settings): File {
+    fun jobCopy(ctx: Context, q: Quote, lines: List<QuoteLine>, materials: List<Material>, customer: Customer?, s: Settings, photos: List<JobPhoto> = emptyList()): File {
         val t = computeTotals(q, lines, s)
         return render(ctx, s, q.number, "JOB COPY", "${q.number}-job-copy.pdf") {
             c.drawText("Your copy for the job. Not for the customer.", M, y + 9f, strong)
@@ -325,6 +354,7 @@ object QuotePdf {
 
             section("Notes on site")
             repeat(6) { need(24f); y += 22f; c.drawLine(M, y, W - M, y, line) }
+            photos(photos)
         }
     }
 }

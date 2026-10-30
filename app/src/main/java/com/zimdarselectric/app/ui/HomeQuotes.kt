@@ -102,6 +102,17 @@ fun HomeScreen(vm: AppViewModel, nav: Nav) {
                 Stat(low.size.toString().padStart(2, '0'), "Parts running low", Z.warn, Modifier.weight(1f))
             }
             Divider()
+            val mLines by vm.lines.collectAsState(); val mExp by vm.expenses.collectAsState(); val mTrips by vm.trips.collectAsState(); val mSet by vm.settings.collectAsState()
+            val ym = java.time.YearMonth.now()
+            val month = com.zimdarselectric.app.data.MoneyCalc.summarize(com.zimdarselectric.app.data.MoneyCalc.ms(ym.atDay(1)), com.zimdarselectric.app.data.MoneyCalc.ms(ym.plusMonths(1).atDay(1)), quotes, mLines, mExp, mTrips, mSet)
+            Row(Modifier.fillMaxWidth().clickable { nav.open(Page.Money) }.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Label("${ym.month.name.lowercase().replaceFirstChar { it.uppercase() }} profit")
+                    Text(money(month.profit), fontFamily = Condensed, fontSize = 30.sp, color = if (month.profit >= 0) Z.neon else Z.warn)
+                }
+                Label("Money →", color = Z.neon)
+            }
+            Divider()
         }
         if (low.isNotEmpty()) {
             item { SectionHeader("01", "Order soon", "Stock →") { nav.goTab(Tab.STOCK) } }

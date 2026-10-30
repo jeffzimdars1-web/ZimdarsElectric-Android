@@ -4,6 +4,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +55,7 @@ import java.util.Locale
 import kotlin.math.sqrt
 
 @Composable
-private fun BackHeader(title: String, onBack: () -> Unit) {
+fun BackHeader(title: String, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.background(Z.raised, cut()).clickable { onBack() }.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Text("←", color = Z.text, fontSize = 18.sp)
@@ -177,6 +180,8 @@ fun BooksScreen(vm: AppViewModel, nav: Nav) {
             }
             message?.let { Spacer(Modifier.height(10.dp)); Text(it, color = Z.neon, fontSize = 15.sp) }
             Spacer(Modifier.height(18.dp))
+            OutlineBigButton("Money", Modifier.fillMaxWidth(), small = "Month · sales tax · income tax") { nav.open(com.zimdarselectric.app.Page.Money) }
+            Spacer(Modifier.height(14.dp))
             Label(if (net >= 0) "Net profit so far" else "Net loss so far")
             Text(money(net), fontFamily = Condensed, fontSize = 52.sp, color = if (net >= 0) Z.neon else Z.warn)
             Spacer(Modifier.height(8.dp))
@@ -581,6 +586,34 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
 
             SectionHeader("10", "Backup")
             BackupSection()
+
+            SectionHeader("11", "Getting paid · on invoices")
+            TextFieldSaved("Venmo (e.g. @Zimdars-Electric)", s.venmo, "venmo") { save(s.copy(venmo = it.trim())) }
+            Gap()
+            TextFieldSaved("Zelle (phone or email)", s.zelle, "zelle") { save(s.copy(zelle = it.trim())) }
+            Gap()
+            TextFieldSaved("Other payment note (e.g. Checks payable to Zimdars Electric LLC)", s.payNote, "paynote") { save(s.copy(payNote = it.trim())) }
+            Gap()
+            NumField("Remind unpaid invoices after (days)", s.invoiceReminderDays.toDouble(), "ird") { save(s.copy(invoiceReminderDays = it.toInt().coerceIn(1, 60))) }
+
+            SectionHeader("12", "Google reviews")
+            Text("Paste your Google review link. On your phone: open Google Maps → your business → Ask for reviews (or Share profile) → copy link. Customers get it by text the day after a job is done.",
+                color = Z.muted, fontSize = 13.sp)
+            Gap()
+            TextFieldSaved("Google review link", s.reviewUrl, "rurl") { save(s.copy(reviewUrl = it.trim())) }
+
+            SectionHeader("13", "ST-124 · your part")
+            TextFieldSaved("Sales tax Certificate of Authority number (if you have one)", s.coaNumber, "coa") { save(s.copy(coaNumber = it.trim())) }
+            Gap()
+            OwnerSignature(vm, s.ownerSignaturePath)
+
+            SectionHeader("14", "Income tax estimates")
+            Text("Used by Money → Income tax to estimate what to set aside and pay each quarter. Your bracket depends on all your income, including your W-2 job.", color = Z.muted, fontSize = 13.sp)
+            Gap()
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                NumField("Federal bracket %", s.fedTaxPct, "fed", Modifier.weight(1f)) { save(s.copy(fedTaxPct = it.coerceIn(0.0, 40.0))) }
+                NumField("NY State %", s.stateTaxPct, "nys", Modifier.weight(1f)) { save(s.copy(stateTaxPct = it.coerceIn(0.0, 12.0))) }
+            }
             Spacer(Modifier.height(40.dp))
         }
     }
@@ -652,6 +685,61 @@ private fun BackupSection() {
             },
             dismiss = "Cancel" to { confirm = null }) {
             Text("Everything on this phone is replaced with the backup from ${e.label}. Anything you added after that is lost. The app restarts when it's done.", color = Z.muted)
+        }
+    }
+}
+
+
+/** Draw your signature once; it goes on the contractor line of ST-124 forms. */
+@Composable
+private fun OwnerSignature(vm: AppViewModel, path: String) {
+    var drawing by remember { mutableStateOf(false) }
+    if (path.isNotBlank() && java.io.File(path).exists() && !drawing) {
+        Label("Your signature")
+        ItemThumb(path, 120.dp)
+        Label("Redo", color = Z.neon, modifier = Modifier.clickable { drawing = true }.padding(vertical = 8.dp))
+    } else if (!drawing) {
+        GhostButton("Draw your signature", Modifier.fillMaxWidth()) { drawing = true }
+    }
+    if (drawing) SignaturePad(onCancel = { drawing = false }) { bmp -> vm.saveOwnerSignature(bmp); drawing = false }
+}
+
+@Composable
+fun SignaturePad(onCancel: () -> Unit, onSave: (android.graphics.Bitmap) -> Unit) {
+    val strokes = remember { androidx.compose.runtime.mutableStateListOf<MutableList<androidx.compose.ui.geometry.Offset>>() }
+    var tick by remember { mutableStateOf(0) }
+    var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    Column {
+        Label("Sign with your finger")
+        androidx.compose.foundation.Canvas(
+            Modifier.fillMaxWidth().height(170.dp).background(androidx.compose.ui.graphics.Color.White)
+                .onSizeChanged { size = it }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { o -> strokes.add(mutableListOf(o)); tick++ },
+                        onDrag = { change, _ -> strokes.lastOrNull()?.add(change.position); tick++ },
+                    )
+                }
+        ) {
+            tick.let { }
+            strokes.forEach { pts ->
+                for (i in 1 until pts.size) drawLine(androidx.compose.ui.graphics.Color.Black, pts[i - 1], pts[i], strokeWidth = 5f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            GhostButton("Clear", Modifier.weight(1f)) { strokes.clear(); tick++ }
+            GhostButton("Cancel", Modifier.weight(1f)) { onCancel() }
+            GhostButton("Save", Modifier.weight(1f), color = Z.neon) {
+                if (strokes.isEmpty() || size.width == 0) return@GhostButton
+                val all = strokes.flatten()
+                val minX = all.minOf { it.x } - 10; val minY = all.minOf { it.y } - 10
+                val maxX = all.maxOf { it.x } + 10; val maxY = all.maxOf { it.y } + 10
+                val bmp = android.graphics.Bitmap.createBitmap((maxX - minX).toInt().coerceAtLeast(1), (maxY - minY).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+                val c = android.graphics.Canvas(bmp)
+                val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; strokeWidth = 5f; strokeCap = android.graphics.Paint.Cap.ROUND; style = android.graphics.Paint.Style.STROKE }
+                strokes.forEach { pts -> for (i in 1 until pts.size) c.drawLine(pts[i - 1].x - minX, pts[i - 1].y - minY, pts[i].x - minX, pts[i].y - minY, p) }
+                onSave(bmp)
+            }
         }
     }
 }

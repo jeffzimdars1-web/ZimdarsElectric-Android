@@ -61,7 +61,7 @@ fun TextFieldSaved(label: String, value: String, key: Any, modifier: Modifier = 
 }
 
 @Composable
-fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook: () -> Unit = {}) {
+fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook: () -> Unit = {}, onOpenQuote: (Long) -> Unit = {}) {
     val quotes by vm.quotes.collectAsState()
     val allLines by vm.lines.collectAsState()
     val materials by vm.materials.collectAsState()
@@ -241,10 +241,17 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
 
             SectionHeader("06", "Customer signature")
             SignatureSection(vm, q, customers.firstOrNull { it.id == q.customerId }, settings)
+            St124Section(vm, q, settings)
             Spacer(Modifier.height(12.dp))
             QuotePdfButtons(vm, q)
 
-            SectionHeader("07", "Status")
+            SectionHeader("07", "Photos")
+            PhotosSection(vm, q)
+
+            SectionHeader("08", if (q.parentId != null) "Change order" else "Change orders")
+            ChangeOrdersSection(vm, q, quotes, allLines, settings, onOpenQuote)
+
+            SectionHeader("09", "Status")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(Status.DRAFT, Status.SENT, Status.APPROVED, Status.DECLINED).forEach { s ->
                     val sel = q.status == s
@@ -262,11 +269,17 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
                 Text("Job done. Materials were taken out of stock.", color = Z.muted)
             }
             Spacer(Modifier.height(10.dp))
+            val billTotal = if (q.parentId == null) com.zimdarselectric.app.data.Billing.invoiceTotal(q, quotes.filter { it.parentId == q.id }, allLines, settings) else totals.total
             if (q.paidAt == null) {
-                GhostButton("Mark paid · ${money(totals.total)}", Modifier.fillMaxWidth(), color = Z.ok) { vm.markPaid(q, totals.total) }
+                GhostButton("Mark paid · ${money(billTotal)}", Modifier.fillMaxWidth(), color = Z.ok) { vm.markPaid(q, billTotal) }
             } else {
                 Text("Paid ${money(q.paidAmount)}", color = Z.ok, fontFamily = Mono)
             }
+            if (q.parentId == null && (q.status == Status.APPROVED || q.status == Status.DONE || q.signedAt != null)) {
+                SectionHeader("10", "Invoice + getting paid")
+                InvoiceSection(vm, q, quotes, allLines, settings)
+            }
+            Spacer(Modifier.height(10.dp))
             Spacer(Modifier.height(10.dp))
             GhostButton("Delete quote", Modifier.fillMaxWidth(), color = Z.warn) { confirmDelete = true }
             Spacer(Modifier.height(40.dp))

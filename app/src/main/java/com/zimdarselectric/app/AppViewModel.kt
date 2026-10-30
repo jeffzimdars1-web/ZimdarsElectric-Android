@@ -38,6 +38,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val lines = hot(dao.allLines(), emptyList())
     val expenses = hot(dao.expenses(), emptyList())
     val attachments = hot(dao.attachments(), emptyList())
+    val photos = hot(dao.photos(), emptyList())
     /** Every item line from every receipt in Books, newest first. */
     val receiptItems: StateFlow<List<com.zimdarselectric.app.data.ReceiptItem>> =
         hot(dao.expenses().map { list -> list.flatMap { com.zimdarselectric.app.data.ReceiptItem.from(it) } }, emptyList())
@@ -53,7 +54,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // While the app is open, check for customer signatures every 20 seconds (only if a quote is waiting).
         viewModelScope.launch {
             while (true) {
-                if (quotes.value.any { it.awaitingSignature }) {
+                if (quotes.value.any { it.awaitingSignature || (it.st124Token.isNotBlank() && it.st124SignedAt == null) }) {
                     runCatching { SignService.notifySigned(app, SignService.sync(app)) }
                     kotlinx.coroutines.delay(20_000)
                 } else kotlinx.coroutines.delay(5_000)
@@ -61,6 +62,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         runCatching { SignService.scheduleBackgroundCheck(app) }
         runCatching { com.zimdarselectric.app.data.Backup.schedule(app) }
+        runCatching { com.zimdarselectric.app.data.Billing.schedule(app) }
         // Keep job reminders matched to quote dates and reminder settings.
         viewModelScope.launch {
             combine(dao.quotes(), dao.settings()) { q, s -> q to (s ?: Settings()) }
@@ -80,7 +82,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val lines = dao.linesFor(q.id)
         val customer = current.customerId?.let { dao.customer(it) }
         try {
-            val link = SignService.create(s.signKey.trim(), SignService.payload(current, lines, customer, s), current.number,
+            val changeOf = current.parentId?.let { dao.quote(it)?.number }
+            val link = SignService.create(s.signKey.trim(), SignService.payload(current, lines, customer, s, changeOf), current.number,
                 current.signToken.takeIf { current.signedAt == null })
             val now = System.currentTimeMillis()
             val latest = dao.quote(q.id) ?: return@launch
@@ -120,7 +123,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val customer = q.customerId?.let { dao.customer(it) }
         val mats = materials.value
         val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            runCatching { if (jobCopy) QuotePdf.jobCopy(app, q, lines, mats, customer, s) else QuotePdf.customerCopy(app, q, lines, customer, s) }.getOrNull()
+            val pics = dao.photosFor(q.id)
+            runCatching { if (jobCopy) QuotePdf.jobCopy(app, q, lines, mats, customer, s, pics) else QuotePdf.customerCopy(app, q, lines, customer, s, pics.filter { it.onCustomerCopy }) }.getOrNull()
         }
         onDone(f)
     }
@@ -446,6 +450,96 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun markPaid(q: Quote, amount: Double) = viewModelScope.launch {
         dao.updateQuote(q.copy(paidAmount = amount, paidAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
+        val key = dao.settingsNow()?.signKey.orEmpty()
+        if (q.invoiceToken.isNotBlank() && key.isNotBlank()) runCatching { SignService.markInvoicePaid(key, q.invoiceToken) }
+    }
+
+    // ---------- ST-124 ----------
+    /** Texts the customer a link to sign Form ST-124 by itself (for a job already signed or done). */
+    fun sendSt124(q: Quote, onDone: (url: String?, error: String?, texted: Boolean) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        if (s.signKey.isBlank()) { onDone(null, "Add your signing key in Settings first.", false); return@launch }
+        val current = dao.quote(q.id) ?: return@launch
+        val customer = current.customerId?.let { dao.customer(it) }
+        try {
+            val link = SignService.create(s.signKey.trim(), SignService.st124Payload(current, customer, s), current.number,
+                current.st124Token.takeIf { current.st124SignedAt == null }, kind = "st124")
+            val now = System.currentTimeMillis()
+            dao.quote(q.id)?.let { dao.updateQuote(it.copy(st124Token = link.token, st124Url = link.url, st124SentAt = now)) }
+            val text = "${s.businessName}: Please sign New York State Form ST-124 for the work at ${current.site.ifBlank { "your property" }}. It confirms the new installation is a capital improvement, so no sales tax is charged on it. Sign here: ${link.url}"
+            val texted = com.zimdarselectric.app.data.CustomerTexts.canSend(app) && com.zimdarselectric.app.data.CustomerTexts.sendText(app, current, customer, text)
+            SignService.scheduleBackgroundCheck(app)
+            onDone(link.url, null, texted)
+        } catch (e: Exception) { onDone(null, friendly(e), false) }
+    }
+
+    /** Saves your own signature (drawn once) for the contractor line on ST-124. */
+    fun saveOwnerSignature(bmp: android.graphics.Bitmap) = viewModelScope.launch {
+        val f = java.io.File(java.io.File(app.filesDir, "signatures").apply { mkdirs() }, "owner_signature.png")
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
+        val s = dao.settingsNow() ?: Settings()
+        dao.saveSettings(s.copy(ownerSignaturePath = f.absolutePath))
+    }
+
+    // ---------- Change orders ----------
+    fun newChangeOrder(parent: Quote, onCreated: (Long) -> Unit) = viewModelScope.launch {
+        val n = dao.quotesNow().count { it.parentId == parent.id } + 1
+        val id = dao.insertQuote(Quote(
+            number = "${parent.number}-CO$n", title = "Change order $n", parentId = parent.id,
+            customerId = parent.customerId, customerName = parent.customerName, site = parent.site,
+            siteLat = parent.siteLat, siteLon = parent.siteLon, jobType = parent.jobType,
+            laborRate = parent.laborRate, markupPct = parent.markupPct, taxRatePct = parent.taxRatePct,
+            startAt = parent.startAt, hasTime = parent.hasTime, scheduled = parent.scheduled, askReview = false,
+        ))
+        onCreated(id)
+    }
+
+    // ---------- Invoices ----------
+    fun sendInvoice(q: Quote, onDone: (url: String?, error: String?, texted: Boolean) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        if (s.signKey.isBlank()) { onDone(null, "Add your signing key in Settings first.", false); return@launch }
+        val current = dao.quote(q.id) ?: return@launch
+        val customer = current.customerId?.let { dao.customer(it) }
+        val all = dao.quotesNow(); val lines = dao.allLinesNow()
+        val children = all.filter { it.parentId == current.id }
+        try {
+            val payload = com.zimdarselectric.app.data.Billing.payload(current, children, lines, customer, s)
+            val link = SignService.create(s.signKey.trim(), payload, current.number, current.invoiceToken.takeIf { it.isNotBlank() }, kind = "invoice")
+            val due = payload.getJSONObject("invoice").getDouble("due")
+            dao.quote(q.id)?.let { dao.updateQuote(it.copy(invoiceToken = link.token, invoiceUrl = link.url, invoiceSentAt = System.currentTimeMillis(), invoiceRemindedAt = null)) }
+            val texted = com.zimdarselectric.app.data.CustomerTexts.canSend(app) &&
+                com.zimdarselectric.app.data.CustomerTexts.sendText(app, current, customer, com.zimdarselectric.app.data.Billing.invoiceText(current, s, due, link.url))
+            onDone(link.url, null, texted)
+        } catch (e: Exception) { onDone(null, friendly(e), false) }
+    }
+
+    fun sendInvoiceReminder(q: Quote, onDone: (Boolean) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        val current = dao.quote(q.id) ?: return@launch
+        val customer = current.customerId?.let { dao.customer(it) }
+        val due = com.zimdarselectric.app.data.Billing.invoiceTotal(current, dao.quotesNow().filter { it.parentId == current.id }, dao.allLinesNow(), s) - current.paidAmount
+        val ok = com.zimdarselectric.app.data.CustomerTexts.sendText(app, current, customer, com.zimdarselectric.app.data.Billing.reminderText(current, s, due, current.invoiceUrl))
+        dao.updateQuote(current.copy(invoiceRemindedAt = System.currentTimeMillis()))
+        onDone(ok)
+    }
+
+    // ---------- Job photos ----------
+    private fun photoDir() = java.io.File(app.filesDir, "photos").apply { mkdirs() }
+    fun newJobPhotoFile(): java.io.File = java.io.File(photoDir(), "job_${System.currentTimeMillis()}.jpg")
+    fun addJobPhoto(quoteId: Long, f: java.io.File) = shrinkItemPhoto(f) { ok ->
+        if (ok) viewModelScope.launch { dao.insertPhoto(com.zimdarselectric.app.data.JobPhoto(quoteId = quoteId, path = f.absolutePath)) }
+    }
+    /** Copies a picture picked from the gallery into the app, then adds it. */
+    fun addJobPhotoFromUri(quoteId: Long, uri: android.net.Uri) = viewModelScope.launch {
+        val f = newJobPhotoFile()
+        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { app.contentResolver.openInputStream(uri)!!.use { i -> f.outputStream().use { i.copyTo(it) } }; true }.getOrDefault(false)
+        }
+        if (ok) addJobPhoto(quoteId, f)
+    }
+    fun savePhoto(p: com.zimdarselectric.app.data.JobPhoto) = viewModelScope.launch { dao.updatePhoto(p) }
+    fun deletePhoto(p: com.zimdarselectric.app.data.JobPhoto) = viewModelScope.launch {
+        dao.deletePhoto(p); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { java.io.File(p.path).delete() }
     }
 
     // ---------- Books ----------

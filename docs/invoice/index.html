@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Invoice</title>
+<style>
+  :root {
+    --ink: #1c1f21; --muted: #5d656b; --line: #d9dde0; --paper: #ffffff; --wash: #f3f4f5;
+    --band: #1c1f21; --neon: #dcff34; --ok: #2e8f5b; --warn: #c2410c;
+    --cond: "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--wash); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .sheet { max-width: 680px; margin: 0 auto; background: var(--paper); min-height: 100vh; }
+  header { background: var(--band); color: #f2f3f3; padding: 22px 20px 18px; border-bottom: 4px solid var(--neon); }
+  header h1 { margin: 0; font: 700 26px/1.1 var(--cond); letter-spacing: .5px; text-transform: uppercase; }
+  header .contact { margin-top: 6px; font-size: 13px; color: #c9cdd0; }
+  main { padding: 6px 20px 40px; }
+  .kicker { font: 600 11px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+  h2 { font: 700 15px/1.2 var(--cond); text-transform: uppercase; letter-spacing: 1px; margin: 26px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .doc { font: 700 26px/1 var(--cond); text-transform: uppercase; }
+  .when { margin-top: 18px; border: 2px solid var(--ink); padding: 16px; display: grid; gap: 4px; }
+  .when .day { font: 700 28px/1.1 var(--cond); }
+  .when .time { font-size: 18px; font-weight: 600; }
+  .when .window { color: var(--muted); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+  .muted { color: var(--muted); }
+  .note { background: var(--wash); border-left: 3px solid var(--ink); padding: 10px 12px; font-size: 14px; margin: 10px 0; }
+  ul { margin: 6px 0 0; padding-left: 20px; } li { margin: 4px 0; }
+  button, .btn { font: 700 16px var(--cond); text-transform: uppercase; letter-spacing: 1px; border: 0; cursor: pointer; text-decoration: none; display: block; text-align: center; }
+  .btn-main { background: var(--ink); color: var(--neon); padding: 16px 20px; width: 100%; margin-top: 18px; }
+  .btn-main[disabled] { opacity: .5; }
+  .btn-line { border: 1.5px solid var(--ink); color: var(--ink); background: var(--paper); padding: 13px 14px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .confirmed { border: 2px solid var(--ok); padding: 14px 16px; margin-top: 18px; }
+  .confirmed .badge { color: var(--ok); font: 700 22px var(--cond); text-transform: uppercase; }
+  .err { color: var(--warn); font-weight: 600; margin-top: 10px; min-height: 1em; }
+  .center { padding: 60px 20px; text-align: center; }
+  .small { font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td { padding: 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.n { text-align: right; white-space: nowrap; padding-left: 12px; }
+  .due { margin-top: 18px; border: 2px solid var(--ink); padding: 16px; }
+  .due .amt { font: 700 40px/1.1 var(--cond); }
+  .paid { border-color: var(--ok); }
+  .paid .amt { color: var(--ok); }
+  .pay { display: grid; gap: 10px; margin-top: 12px; }
+  .scope { white-space: pre-wrap; margin: 4px 0 0; font-size: 14px; }
+  @media print { .noprint { display: none !important; } body { background: #fff; } header { background: #fff; color: #000; } header .contact { color: #000; } }
+</style>
+</head>
+<body>
+<div class="sheet"><div id="app"><div class="center muted">Loading your invoice…</div></div></div>
+<script>
+(function () {
+  "use strict";
+  var API = "https://dmaslbfwpsfnnnyushbc.supabase.co/functions/v1/sign";
+  var token = new URLSearchParams(location.search).get("t") || "";
+  var app = document.getElementById("app");
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") e.textContent = attrs[k]; else if (k === "cls") e.className = attrs[k]; else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function money(v) { return (Number(v) || 0).toLocaleString("en-US", { style: "currency", currency: "USD" }); }
+  function day(ms) { return ms ? new Date(ms).toLocaleDateString("en-US", { timeZone: "America/New_York", year: "numeric", month: "long", day: "numeric" }) : ""; }
+  function digits(p) { return String(p || "").replace(/[^0-9+]/g, ""); }
+  function message(t, b) { app.innerHTML = ""; app.appendChild(el("div", { cls: "center" }, [el("h2", { text: t }), el("p", { cls: "muted", text: b })])); }
+
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) { message("Link not valid", "Please use the full link from your text or email."); return; }
+  fetch(API + "?t=" + encodeURIComponent(token), { cache: "no-store" })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok || res.j.kind !== "invoice") { message("Invoice not found", "This link may be wrong or out of date. Please contact us."); return; }
+      render(res.j);
+    })
+    .catch(function () { message("Can't load the invoice", "Check your connection and open the link again."); });
+
+  function render(d) {
+    var p = d.payload || {}, b = p.business || {}, c = p.customer || {}, inv = p.invoice || {}, pay = p.pay || {};
+    var paid = d.status === "paid" || (inv.due || 0) <= 0;
+    document.title = (b.name || "Invoice") + " · Invoice " + (inv.number || d.quote_number);
+    app.innerHTML = "";
+    app.appendChild(el("header", null, [
+      el("h1", { text: b.name || "Invoice" }),
+      el("div", { cls: "contact", text: [b.phone, b.email, b.address].filter(Boolean).join(" · ") }),
+      b.license ? el("div", { cls: "contact", text: "License " + b.license }) : null,
+    ]));
+    var m = el("main"); app.appendChild(m);
+    m.appendChild(el("div", { cls: "title-row" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "Invoice" }), el("div", { cls: "doc", text: inv.number || d.quote_number })]),
+      el("div", { cls: "muted small", style: "text-align:right" }, [el("div", { text: day(inv.date) }), c.name ? el("div", { text: "Bill to " + c.name }) : null]),
+    ]));
+    if (d.status === "canceled") m.appendChild(el("div", { cls: "note", text: "This invoice was replaced by a newer one. Please use the latest link we sent." }));
+    m.appendChild(el("div", { cls: "due" + (paid ? " paid" : "") }, [
+      el("div", { cls: "kicker", text: paid ? "Paid in full" : "Amount due" }),
+      el("div", { cls: "amt", text: paid ? "✓ " + money(inv.total) : money(inv.due) }),
+      paid ? el("div", { cls: "muted small", text: "Thank you for your business!" })
+           : el("div", { cls: "muted small", text: inv.terms || "Payment due on receipt." }),
+    ]));
+    m.appendChild(el("h2", { text: "Job" }));
+    m.appendChild(el("div", { cls: "grid" }, [
+      el("div", null, [el("div", { cls: "kicker", text: "Service address" }), el("div", { text: inv.site || c.address || "" })]),
+      el("div", null, [el("div", { cls: "kicker", text: "Work" }), el("div", { text: inv.title || "" })]),
+    ]));
+    (inv.parts || []).forEach(function (part) {
+      m.appendChild(el("h2", { text: (part.changeOrder ? "Change order · " : "") + part.title + " (" + part.number + ")" }));
+      if (part.work) m.appendChild(el("p", { cls: "scope", text: part.work }));
+      var tb = el("tbody");
+      [["Materials", part.materials], ["Labor", part.labor], ["Sales tax", part.tax]].forEach(function (r) {
+        if (r[1] > 0) tb.appendChild(el("tr", null, [el("td", { text: r[0] }), el("td", { cls: "n", text: money(r[1]) })]));
+      });
+      tb.appendChild(el("tr", null, [el("td", { text: "Subtotal", style: "font-weight:600" }), el("td", { cls: "n", style: "font-weight:600", text: money(part.total) })]));
+      m.appendChild(el("table", null, [tb]));
+    });
+    var tot = el("tbody");
+    tot.appendChild(el("tr", null, [el("td", { text: "Total" }), el("td", { cls: "n", text: money(inv.total) })]));
+    if (inv.paid > 0) tot.appendChild(el("tr", null, [el("td", { text: "Paid" }), el("td", { cls: "n", text: "−" + money(inv.paid) })]));
+    tot.appendChild(el("tr", null, [el("td", { text: paid ? "Balance" : "Amount due", style: "font-weight:700" }), el("td", { cls: "n", style: "font-weight:700", text: money(paid ? 0 : inv.due) })]));
+    m.appendChild(el("h2", { text: "Total" }));
+    m.appendChild(el("table", null, [tot]));
+
+    if (!paid && d.status !== "canceled") {
+      m.appendChild(el("h2", { text: "How to pay" }));
+      var box = el("div", { cls: "pay noprint" });
+      if (pay.venmo) {
+        var user = String(pay.venmo).replace(/^@/, "").trim();
+        var href = "https://venmo.com/" + encodeURIComponent(user) + "?txn=pay&amount=" + (Math.round(inv.due * 100) / 100) + "&note=" + encodeURIComponent("Invoice " + (inv.number || ""));
+        box.appendChild(el("a", { cls: "btn btn-main", style: "margin-top:0", href: href, text: "Pay " + money(inv.due) + " with Venmo" }));
+      }
+      if (pay.zelle) {
+        var z = el("button", { cls: "btn btn-line", type: "button", text: "Zelle: " + pay.zelle + " · tap to copy" });
+        z.addEventListener("click", function () {
+          (navigator.clipboard ? navigator.clipboard.writeText(pay.zelle) : Promise.reject()).then(function () { z.textContent = "Copied: " + pay.zelle; }, function () {});
+        });
+        box.appendChild(z);
+        box.appendChild(el("div", { cls: "muted small", text: "Open your bank app, choose Zelle, and send " + money(inv.due) + " to " + pay.zelle + ". Put " + (inv.number || "the invoice number") + " in the memo." }));
+      }
+      if (pay.note) box.appendChild(el("div", { cls: "note", text: pay.note }));
+      box.appendChild(el("div", { cls: "muted small", text: "Cash or check is fine too. Questions? Call or text " + (pay.phone || b.phone || "us") + "." }));
+      if (pay.phone || b.phone) box.appendChild(el("div", { cls: "row" }, [
+        el("a", { cls: "btn btn-line", href: "tel:" + digits(pay.phone || b.phone), text: "Call" }),
+        el("a", { cls: "btn btn-line", href: "sms:" + digits(pay.phone || b.phone), text: "Text" }),
+      ]));
+      m.appendChild(box);
+    }
+    var pr = el("button", { cls: "btn btn-line noprint", style: "margin-top:20px;width:100%", type: "button", text: "Save or print a copy" });
+    pr.addEventListener("click", function () { window.print(); });
+    m.appendChild(pr);
+  }
+})();
+</script>
+</body>
+</html>

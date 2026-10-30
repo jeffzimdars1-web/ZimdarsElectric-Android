@@ -3,5 +3,7 @@
     <cache-path name="updates" path="updates/" />
     <files-path name="receipts" path="receipts/" />
     <files-path name="items" path="items/" />
+    <files-path name="st124" path="st124/" />
+    <files-path name="photos" path="photos/" />
     <cache-path name="pdfs" path="pdfs/" />
 </paths>
