@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -291,7 +292,7 @@ fun MoreScreen(nav: Nav) {
         MoreRow("01", "Price book", "What to charge · how to quote it") { nav.open(Page.PriceBook) }
         MoreRow("·", "Job map", "Upcoming jobs + directions") { nav.open(Page.JobMap) }
         MoreRow("02", "Customers", "Call, text, directions, new quote") { nav.open(Page.Customers) }
-        MoreRow("03", "Tools + calculators", "Voltage drop · more coming") { nav.open(Page.Tools) }
+        MoreRow("03", "Tools + calculators", "Box fill · conduit fill · wire size · load calc · voltage drop") { nav.open(Page.Tools) }
         MoreRow("04", "Settings", "Business info · rates · updates · v${Updater.currentVersion}") { nav.open(Page.Settings) }
     }
 }
@@ -400,6 +401,7 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
 
 @Composable
 fun ToolsScreen(onBack: () -> Unit) {
+    var tool by remember { mutableStateOf(0) }
     var volts by remember { mutableStateOf("120") }
     var amps by remember { mutableStateOf("20") }
     var feet by remember { mutableStateOf("100") }
@@ -418,7 +420,22 @@ fun ToolsScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         BackHeader("Tools", onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
-            SectionHeader("01", "Voltage drop · copper")
+            val tools = listOf("Box fill", "Conduit fill", "Wire size", "Load calc", "Voltage drop")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                tools.forEachIndexed { i, t ->
+                    Box(Modifier.background(if (i == tool) Z.neon else Z.raised, cut(6.dp)).clickable { tool = i }.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(t.uppercase(), fontFamily = Mono, fontSize = 12.sp, color = if (i == tool) Z.onNeon else Z.text)
+                    }
+                }
+            }
+            SectionHeader("", tools[tool])
+            when (tool) {
+                0 -> BoxFillTool()
+                1 -> ConduitFillTool()
+                2 -> WireSizeTool()
+                3 -> LoadCalcTool()
+            }
+            if (tool == 4) {
             Segmented(listOf("Single phase", "Three phase"), threePhase) { threePhase = it }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -456,6 +473,7 @@ fun ToolsScreen(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(10.dp))
             Text("Resistance method, uncoated copper at about 75°C (K = 12.9). NEC suggests 3% or less for branch circuits. Check conditions on your job.", color = Z.muted, fontSize = 13.sp)
+            }
             Spacer(Modifier.height(30.dp))
         }
     }
