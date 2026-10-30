@@ -61,7 +61,7 @@ fun TextFieldSaved(label: String, value: String, key: Any, modifier: Modifier = 
 }
 
 @Composable
-fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook: () -> Unit = {}, onCameraBuild: () -> Unit = {}) {
+fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook: () -> Unit = {}) {
     val quotes by vm.quotes.collectAsState()
     val allLines by vm.lines.collectAsState()
     val materials by vm.materials.collectAsState()
@@ -180,8 +180,6 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             if (!locked) {
                 Spacer(Modifier.height(12.dp))
                 GhostButton("+ Add material", Modifier.fillMaxWidth()) { addMaterial = true }
-                Spacer(Modifier.height(8.dp))
-                NeonButton("Build in camera", Modifier.fillMaxWidth(), small = "Place boxes + runs on the wall") { onCameraBuild() }
             }
 
             SectionHeader("04", "Labor + pricing", "Price book →") { onPriceBook() }

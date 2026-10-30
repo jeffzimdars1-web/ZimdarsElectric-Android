@@ -81,8 +81,6 @@ dependencies {
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     // Checks for customer signatures in the background.
     implementation("androidx.work:work-runtime-ktx:2.9.1")
-    // Build in camera: Google ARCore (free) drawn with SceneView.
-    implementation("io.github.sceneview:arsceneview:2.2.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
