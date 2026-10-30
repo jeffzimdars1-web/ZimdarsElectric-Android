@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zimdarselectric.app.AppViewModel
 import com.zimdarselectric.app.data.Quote
+import kotlinx.coroutines.launch
 
 /** A booked visit before you know the work: customer, address, day/time, what's going on, reminders. No prices. */
 @Composable
@@ -35,6 +36,13 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
     val customer = customers.firstOrNull { it.id == q.customerId }
     var pickCustomer by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var sending by remember { mutableStateOf(false) }
+    var sendNote by remember { mutableStateOf<String?>(null) }
+    val askSms = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        sendNote = if (ok) "Texting is on. Tap the button again to send." else "Texting is blocked. Use \"Open in Messages\", or allow SMS in the app's settings."
+    }
     fun save(n: Quote) = vm.saveQuote(n)
 
     Column(Modifier.fillMaxSize()) {
@@ -73,7 +81,39 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
             SchedulePicker(q, customer, settings) { save(it) }
             DriveSection(vm, q)
 
-            SectionHeader("03", "After the visit")
+            SectionHeader("03", "Send to customer", q.sentAt?.let { "Sent " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it)) })
+            val booking = com.zimdarselectric.app.data.CustomerTexts.booking(q, customer, settings)
+            Column(Modifier.fillMaxWidth().background(Z.raised).padding(12.dp)) {
+                Label("They'll get this text")
+                Spacer(Modifier.height(4.dp))
+                Text(booking, color = Z.text, fontSize = 14.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            val phone = customer?.phone.orEmpty()
+            if (phone.isBlank()) Text("Add the customer's cell number (tap Customer above, or More → Customers) to send it.", color = Z.warn, fontSize = 13.sp)
+            else {
+                NeonButton(when { sending -> "Sending…"; q.sentAt != null -> "Send again"; else -> "Text it to ${customer?.name?.substringBefore(' ') ?: "them"}" },
+                    Modifier.fillMaxWidth(), small = "From your phone · $phone") {
+                    if (!sending) {
+                        if (com.zimdarselectric.app.data.CustomerTexts.canSend(context)) {
+                            sending = true
+                            scope.launch {
+                                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.zimdarselectric.app.data.CustomerTexts.sendText(context, q, customer, booking) }
+                                sending = false
+                                if (ok) { save(q.copy(sentAt = System.currentTimeMillis())); sendNote = "Sent. Their reply comes to your Messages app." }
+                                else sendNote = "Couldn't send. Tap the notification to send it from Messages."
+                            }
+                        } else askSms.launch(android.Manifest.permission.SEND_SMS)
+                    }
+                }
+                Label("Open in Messages instead →", color = Z.neon, modifier = Modifier.clickable {
+                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:" + android.net.Uri.encode(phone))).putExtra("sms_body", booking)) }
+                    save(q.copy(sentAt = System.currentTimeMillis()))
+                }.padding(vertical = 10.dp))
+            }
+            sendNote?.let { Text(it, color = Z.neon, fontSize = 13.sp) }
+
+            SectionHeader("04", "After the visit")
             Text("Once you know the fix, turn this into a quote. The customer, address, date and notes carry over, and you add the materials and labor.",
                 color = Z.muted, fontSize = 14.sp)
             Spacer(Modifier.height(10.dp))

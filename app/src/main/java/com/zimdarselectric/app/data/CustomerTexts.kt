@@ -42,6 +42,32 @@ object CustomerTexts {
     fun remind(context: Context, q: Quote, customer: Customer?, s: Settings, nightBefore: Boolean) =
         sendText(context, q, customer, message(q, customer, s, nightBefore))
 
+    /** Booking confirmation for an appointment: when, where, what for, and how you charge. */
+    fun booking(q: Quote, customer: Customer?, s: Settings): String {
+        val first = (customer?.name ?: q.customerName).trim().substringBefore(' ').ifBlank { "there" }
+        val me = listOf(s.ownerName.trim(), s.businessName.trim()).filter { it.isNotBlank() }.let { if (it.size == 2) "${it[0]} with ${it[1]}" else it.firstOrNull() ?: "your electrician" }
+        val start = q.startAt
+        val day = start?.let { SimpleDateFormat("EEEE, MMM d", Locale.US).format(Date(it)) }
+        val time = start?.takeIf { q.hasTime }?.let { SimpleDateFormat("h:mm a", Locale.US).format(Date(it)) }
+        val window = if (time != null && s.arrivalWindow > 0) " (give or take ${s.arrivalWindow} minutes)" else ""
+        val whenText = when {
+            day == null -> "We'll set a day and time together."
+            time == null -> "You're booked for $day. I'll text you when I'm on my way."
+            else -> "You're booked for $day at $time$window."
+        }
+        val what = q.notes.trim().ifBlank { q.title.trim() }.let { if (it.isBlank() || it == "Service call") "" else " to look at: ${it.trimEnd('.')}." }
+        val place = q.site.ifBlank { customer?.address ?: "" }
+        return buildString {
+            append("Hi $first, this is $me. ")
+            append(whenText)
+            if (place.isNotBlank()) append(" Address: $place.")
+            if (what.isNotBlank()) append(" I'm coming$what")
+            if (s.chargeNote.isNotBlank()) append("\n\n").append(s.chargeNote.trim())
+            append("\n\nI'll send a reminder the evening before. Reply here if anything changes.")
+            if (s.phone.isNotBlank()) append(" ${s.phone}")
+        }
+    }
+
     /** "On my way, about 18 minutes" text. */
     fun onMyWay(q: Quote, customer: Customer?, s: Settings, minutes: Int): String {
         val first = (customer?.name ?: q.customerName).trim().substringBefore(' ').ifBlank { "there" }
