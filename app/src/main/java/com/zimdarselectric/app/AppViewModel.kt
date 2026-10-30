@@ -1,6 +1,8 @@
 package com.zimdarselectric.app
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zimdarselectric.app.data.AppDb
@@ -115,6 +117,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         onDone(f)
     }
+
+    /** Books list position, search and month, kept while you open a receipt and come back. */
+    class BooksUi {
+        val list = androidx.compose.foundation.lazy.LazyListState()
+        var search by androidx.compose.runtime.mutableStateOf("")
+        /** "2026-05" for one month, null for the whole tax year. */
+        var month by androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    val booksUi = BooksUi()
 
     // ---------- Settings ----------
     fun saveSettings(s: Settings) = viewModelScope.launch { dao.saveSettings(s) }

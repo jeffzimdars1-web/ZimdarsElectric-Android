@@ -132,7 +132,36 @@ fun BooksScreen(vm: AppViewModel, nav: Nav) {
     val spent = yearExpenses.sumOf { it.amount }
     val net = income - salesTax - spent
 
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
+    // Search + month filter for the expense list
+    val ui = vm.booksUi
+    val monthKey = SimpleDateFormat("yyyy-MM", Locale.US)
+    val monthName = SimpleDateFormat("MMMM yyyy", Locale.US)
+    var pickingMonth by remember { mutableStateOf(false) }
+    val q = ui.search.trim().lowercase()
+    val shownExpenses = when {
+        q.isNotEmpty() -> expenses.filter { e ->
+            listOf(e.vendor, e.note, e.category, e.items, money(e.amount), qtyText(e.amount)).any { it.lowercase().contains(q) }
+        }.filter { ui.month == null || monthKey.format(Date(it.date)) == ui.month }
+        ui.month != null -> expenses.filter { monthKey.format(Date(it.date)) == ui.month }
+        else -> yearExpenses
+    }
+    val vendors = expenses.map { it.vendor.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }
+    val storeHints = if (q.length >= 1) vendors.filter { it.lowercase().contains(q) && !it.equals(ui.search.trim(), true) }.take(5) else emptyList()
+
+    if (pickingMonth) {
+        val months = expenses.groupBy { monthKey.format(Date(it.date)) }.toList().sortedByDescending { it.first }
+        ZDialog("Show which month?", { pickingMonth = false }, confirm = "Close" to { pickingMonth = false }) {
+            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                item { ListRow("All of $year", "${yearExpenses.size} receipts · ${money(spent)}".uppercase(), onClick = { ui.month = null; pickingMonth = false }) }
+                items(months) { (key, list) ->
+                    ListRow(monthName.format(monthKey.parse(key)!!), "${list.size} receipt${if (list.size == 1) "" else "s"} · ${money(list.sumOf { it.amount })}".uppercase(),
+                        onClick = { ui.month = key; pickingMonth = false })
+                }
+            }
+        }
+    }
+
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 22.dp), state = ui.list) {
         item {
             Spacer(Modifier.height(22.dp))
             Column { Title("Books", 38); Label("Tax year $year", color = Z.neon) }
@@ -163,8 +192,25 @@ fun BooksScreen(vm: AppViewModel, nav: Nav) {
             if (yearExpenses.isEmpty()) Text("No expenses yet this year.", color = Z.muted, modifier = Modifier.padding(vertical = 10.dp))
             val missing = yearExpenses.count { e -> attachments.none { it.expenseId == e.id } }
             SectionHeader("02", "Expenses · tap for details", if (missing > 0) "$missing need a receipt" else null)
+            Field("Search receipts (store, item, amount)", ui.search, { ui.search = it })
+            if (storeHints.isNotEmpty()) SuggestionList(storeHints.map { v -> v to "${expenses.count { it.vendor.equals(v, true) }} receipts".uppercase() }) { i -> ui.search = storeHints[i] }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth().background(Z.raised).clickable { pickingMonth = true }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Label("Month")
+                    Text(ui.month?.let { monthName.format(monthKey.parse(it)!!) } ?: "All of $year", color = Z.text, fontSize = 16.sp)
+                }
+                Text("▾", color = Z.neon, fontSize = 18.sp)
+            }
+            if (q.isNotEmpty() || ui.month != null) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Label("${shownExpenses.size} found · ${money(shownExpenses.sumOf { it.amount })}", color = Z.neon, modifier = Modifier.weight(1f))
+                    Label("Clear", color = Z.neon, modifier = Modifier.clickable { ui.search = ""; ui.month = null }.padding(6.dp))
+                }
+            }
+            if (shownExpenses.isEmpty() && (q.isNotEmpty() || ui.month != null)) Text("No receipts match.", color = Z.muted, modifier = Modifier.padding(vertical = 10.dp))
         }
-        items(yearExpenses, key = { it.id }) { e ->
+        items(shownExpenses, key = { it.id }) { e ->
             ListRow("${e.vendor} · ${money(e.amount)}", "${SimpleDateFormat("MMM d", Locale.US).format(Date(e.date))} · ${e.category}".uppercase()
                 + if (e.note.isNotBlank()) "\n" + e.note else "",
                 onClick = { nav.open(Page.ExpenseDetail(e.id)) }) {
@@ -175,12 +221,12 @@ fun BooksScreen(vm: AppViewModel, nav: Nav) {
     }
 
     editing?.let { e ->
-        ExpenseDialog(e, onDismiss = { editing = null }, onDelete = { vm.deleteExpense(e); editing = null }) { vm.addExpense(it); editing = null }
+        ExpenseDialog(e, onDismiss = { editing = null }, onDelete = { vm.deleteExpense(e); editing = null }, vendors = vendors) { vm.addExpense(it); editing = null }
     }
 }
 
 @Composable
-fun ExpenseDialog(initial: Expense, onDismiss: () -> Unit, onDelete: () -> Unit, onSave: (Expense) -> Unit) {
+fun ExpenseDialog(initial: Expense, onDismiss: () -> Unit, onDelete: () -> Unit, vendors: List<String> = emptyList(), onSave: (Expense) -> Unit) {
     val isNew = initial.id == 0L
     var vendor by remember { mutableStateOf(initial.vendor) }
     var amount by remember { mutableStateOf(if (initial.amount == 0.0) "" else qtyText(initial.amount)) }
@@ -205,6 +251,8 @@ fun ExpenseDialog(initial: Expense, onDismiss: () -> Unit, onDelete: () -> Unit,
         LazyColumn {
             item {
                 Field("Store / vendor", vendor, { vendor = it })
+                val hints = if (vendor.isNotBlank()) vendors.filter { it.contains(vendor.trim(), true) && !it.equals(vendor.trim(), true) }.take(4) else emptyList()
+                if (hints.isNotEmpty()) SuggestionList(hints.map { it to "" }) { i -> vendor = hints[i] }
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Field("Total paid", amount, { amount = it }, Modifier.weight(1f), number = true)
