@@ -68,6 +68,7 @@ private val shortTime = DateTimeFormatter.ofPattern("h:mma", Locale.US)
 @Composable
 fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
     val context = LocalContext.current
+    val askNotify = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
     var pickDate by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf<LocalDate?>(null) }
     fun withStart(start: Long?, hours: Double = q.hoursOnSite) =
@@ -126,6 +127,7 @@ fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
             confirmButton = { TextButton(onClick = {
                 val start = day.atTime(state.hour, state.minute).atZone(zone).toInstant().toEpochMilli()
                 onSave(withStart(start)); pickTime = null
+                if (android.os.Build.VERSION.SDK_INT >= 33) askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }) { Text("SAVE", color = Z.neon) } },
             dismissButton = { TextButton(onClick = { pickTime = null }) { Text("CANCEL", color = Z.muted) } })
     }
@@ -143,7 +145,11 @@ fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>,
         Spacer(Modifier.height(14.dp))
         val title = ui.day.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US))
         SectionHeader("", title, (byDay[ui.day]?.size ?: 0).let { if (it == 0) null else "$it job${if (it == 1) "" else "s"}" })
-        if (byDay[ui.day].isNullOrEmpty()) Text("Nothing scheduled. Open a quote and set its date + start time.", color = Z.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 10.dp))
+        if (byDay[ui.day].isNullOrEmpty()) Text("Nothing scheduled this day.", color = Z.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 10.dp))
+        GhostButton("+ New job on ${ui.day.format(DateTimeFormatter.ofPattern("EEE MMM d", Locale.US))}", Modifier.fillMaxWidth()) {
+            vm.newQuoteAt(ui.day.atTime(8, 0).atZone(zone).toInstant().toEpochMilli()) { nav.open(Page.EditQuote(it)) }
+        }
+        Spacer(Modifier.height(6.dp))
     }
     items(byDay[ui.day].orEmpty().sortedBy { it.startAt }, key = { "cal${it.id}" }) { q ->
         val t = computeTotals(q, lines.filter { it.quoteId == q.id }, settings)

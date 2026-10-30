@@ -59,6 +59,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         runCatching { SignService.scheduleBackgroundCheck(app) }
+        // Keep job reminders matched to quote dates and reminder settings.
+        viewModelScope.launch {
+            combine(dao.quotes(), dao.settings()) { q, s -> q to (s ?: Settings()) }
+                .collect { (q, s) -> runCatching { com.zimdarselectric.app.data.Reminders.syncAll(app, q, s) } }
+        }
     }
 
     // ---------- Customer signatures ----------
@@ -214,6 +219,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         dao.saveSettings(s.copy(nextQuoteNo = s.nextQuoteNo + 1))
         onCreated(id)
+    }
+
+    /** New quote already scheduled on [startAt] (from the calendar). */
+    fun newQuoteAt(startAt: Long, onCreated: (Long) -> Unit) = newQuote { id ->
+        viewModelScope.launch {
+            dao.quote(id)?.let { dao.updateQuote(it.copy(startAt = startAt, scheduled = com.zimdarselectric.app.data.scheduleText(startAt, 0.0))) }
+            onCreated(id)
+        }
     }
 
     fun saveQuote(q: Quote) = viewModelScope.launch { dao.updateQuote(q.copy(updatedAt = System.currentTimeMillis())) }

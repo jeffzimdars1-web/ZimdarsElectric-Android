@@ -190,6 +190,10 @@ data class Settings(
     val quoteValidDays: Int = 30,
     /** How you charge, shown to every customer on quotes and the signing page. */
     @ColumnInfo(defaultValue = CHARGE_NOTE) val chargeNote: String = CHARGE_NOTE,
+    /** Job reminders: the evening before (at this hour) and this many minutes before the start. */
+    @ColumnInfo(defaultValue = "1") val remindNightBefore: Boolean = true,
+    @ColumnInfo(defaultValue = "19") val remindNightHour: Int = 19,
+    @ColumnInfo(defaultValue = "60") val remindMinutesBefore: Int = 60,
     /** Key that lets this phone create signing links. Kept only on the phone. */
     @ColumnInfo(defaultValue = "") val signKey: String = "",
 )
@@ -239,6 +243,9 @@ interface AppDao {
 
     @Query("SELECT * FROM Quote WHERE id = :id")
     suspend fun quote(id: Long): Quote?
+
+    @Query("SELECT * FROM Quote")
+    suspend fun quotesNow(): List<Quote>
 
     @Query("SELECT * FROM Quote WHERE signToken != '' AND signedAt IS NULL")
     suspend fun quotesAwaitingSignature(): List<Quote>
@@ -334,6 +341,15 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 11 adds job reminder settings. */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Settings` ADD COLUMN `remindNightBefore` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `Settings` ADD COLUMN `remindNightHour` INTEGER NOT NULL DEFAULT 19")
+        db.execSQL("ALTER TABLE `Settings` ADD COLUMN `remindMinutesBefore` INTEGER NOT NULL DEFAULT 60")
+    }
+}
+
 /** Version 10 adds a real start date/time for the calendar. */
 val MIGRATION_9_10 = object : Migration(9, 10) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -372,7 +388,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -382,7 +398,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .build().also { instance = it }
         }
     }

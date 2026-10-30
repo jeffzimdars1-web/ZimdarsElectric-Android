@@ -46,10 +46,19 @@ import com.zimdarselectric.app.ui.Z
 import com.zimdarselectric.app.ui.ZTheme
 
 class MainActivity : ComponentActivity() {
+    /** A quote to open, from tapping a job reminder. */
+    private val openQuote = mutableStateOf<Long?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { ZTheme { App() } }
+        openQuote.value = intent?.getLongExtra(com.zimdarselectric.app.data.Reminders.EXTRA_QUOTE, -1)?.takeIf { it > 0 }
+        setContent { ZTheme { App(openQuote = openQuote.value, onOpened = { openQuote.value = null }) } }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        intent.getLongExtra(com.zimdarselectric.app.data.Reminders.EXTRA_QUOTE, -1).takeIf { it > 0 }?.let { openQuote.value = it }
     }
 }
 
@@ -74,8 +83,11 @@ class Nav {
 }
 
 @Composable
-fun App(vm: AppViewModel = viewModel()) {
+fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () -> Unit = {}) {
     val nav = remember { Nav() }
+    androidx.compose.runtime.LaunchedEffect(openQuote) {
+        if (openQuote != null) { nav.goTab(Tab.QUOTES); nav.open(Page.EditQuote(openQuote)); onOpened() }
+    }
     BackHandler(enabled = nav.stack.isNotEmpty() || nav.tab != Tab.HOME) {
         if (!nav.back()) nav.tab = Tab.HOME
     }

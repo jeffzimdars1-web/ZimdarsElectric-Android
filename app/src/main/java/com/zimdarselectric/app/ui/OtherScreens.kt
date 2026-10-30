@@ -514,13 +514,23 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             TextFieldSaved("Payment terms", s.paymentTerms, "pt", singleLine = false) { save(s.copy(paymentTerms = it)) }; Gap()
             TextFieldSaved("Warranty", s.warranty, "wa", singleLine = false) { save(s.copy(warranty = it)) }
 
-            SectionHeader("07", "Customer signatures")
+            SectionHeader("07", "Job reminders")
+            Row(Modifier.fillMaxWidth().clickable { save(s.copy(remindNightBefore = !s.remindNightBefore)) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text((if (s.remindNightBefore) "✓  " else "○  ") + "Remind me the evening before", color = Z.text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                NumField("Evening hour (0-23)", s.remindNightHour.toDouble(), "rnh", Modifier.weight(1f)) { save(s.copy(remindNightHour = it.toInt().coerceIn(0, 23))) }
+                NumField("Minutes before start", s.remindMinutesBefore.toDouble(), "rmb", Modifier.weight(1f)) { save(s.copy(remindMinutesBefore = it.toInt().coerceAtLeast(0))) }
+            }
+            Text("19 = 7 PM. Set minutes to 0 to turn off the before-the-job reminder.", color = Z.muted, fontSize = 12.sp)
+
+            SectionHeader("08", "Customer signatures")
             Text("Paste the signing key Claude gave you. It lets this phone create signing links; keep it private.", color = Z.muted, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             TextFieldSaved("Signing key", s.signKey, "sk") { save(s.copy(signKey = it.trim())) }
             if (s.signKey.isNotBlank()) { Spacer(Modifier.height(4.dp)); StatusDot("Signing is set up", Z.ok) }
 
-            SectionHeader("08", "Quote numbers")
+            SectionHeader("09", "Quote numbers")
             NumField("Next quote number", s.nextQuoteNo.toDouble(), "nq") { save(s.copy(nextQuoteNo = it.toInt().coerceAtLeast(1))) }
             Spacer(Modifier.height(40.dp))
         }
