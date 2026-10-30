@@ -1,6 +1,7 @@
 package com.zimdarselectric.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -122,16 +123,24 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             SchedulePicker(q, customers.firstOrNull { it.id == q.customerId }, settings) { save(it) }
             DriveSection(vm, q)
             Spacer(Modifier.height(8.dp))
-            TextFieldSaved("What you'll do (the customer sees this)", q.notes, "notes${q.id}", singleLine = false) { save(q.copy(notes = it)) }
+            val both = q.jobType == JobType.BOTH
+            TextFieldSaved(if (both) "New install work (the customer sees this)" else "What you'll do (the customer sees this)", q.notes, "notes${q.id}", singleLine = false) { save(q.copy(notes = it)) }
+            if (both) {
+                Spacer(Modifier.height(8.dp))
+                TextFieldSaved("Repair work (the customer sees this)", q.repairNotes, "rnotes${q.id}", singleLine = false) { save(q.copy(repairNotes = it)) }
+            }
 
             SectionHeader("02", "Job type · decides NY sales tax")
-            Segmented(listOf("New install", "Repair"), if (q.jobType == JobType.REPAIR) 1 else 0) {
-                save(q.copy(jobType = if (it == 1) JobType.REPAIR else JobType.INSTALL))
+            Segmented(listOf("New install", "Repair", "Both"), when (q.jobType) { JobType.REPAIR -> 1; JobType.BOTH -> 2; else -> 0 }) {
+                save(q.copy(jobType = when (it) { 1 -> JobType.REPAIR; 2 -> JobType.BOTH; else -> JobType.INSTALL }))
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                if (q.jobType == JobType.REPAIR) "Repair or maintenance: sales tax is added to the whole bill. You must be registered for NY sales tax."
-                else "Capital improvement: no sales tax on the bill. The customer signs form ST-124. Enter material costs including the tax you paid at the store.",
+                when (q.jobType) {
+                    JobType.REPAIR -> "Repair or maintenance: sales tax is added to the whole bill. You must be registered for NY sales tax."
+                    JobType.BOTH -> "New install and repair on one bill. NY taxes only the repair part, as long as the two are listed separately, which the quote does for you. Mark each material Install or Repair below, and split the hours. The customer signs ST-124 for the install part."
+                    else -> "Capital improvement: no sales tax on the bill. The customer signs form ST-124. Enter material costs including the tax you paid at the store."
+                },
                 color = Z.muted, fontSize = 14.sp,
             )
 
@@ -156,6 +165,12 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
                         Text(money(l.qty * l.unitCost * (1 + q.markupPct / 100)), fontFamily = Mono, fontSize = 14.sp, color = Z.text)
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        if (both) {
+                            Text(if (l.repair) "REPAIR" else "INSTALL", fontFamily = Mono, fontSize = 11.sp, color = if (l.repair) Z.warn else Z.info,
+                                modifier = Modifier.border(1.dp, if (l.repair) Z.warn else Z.info).clickable(enabled = !locked) { vm.saveLine(l.copy(repair = !l.repair)) }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp))
+                            Spacer(Modifier.width(8.dp))
+                        }
                         Text(stockNote.first.uppercase(), fontFamily = Mono, fontSize = 11.sp, color = stockNote.second, modifier = Modifier.weight(1f))
                         Text("${qtyText(l.qty)} ${l.unit} × ${money(l.unitCost)}", fontFamily = Mono, fontSize = 11.sp, color = Z.muted)
                     }
@@ -171,16 +186,21 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
 
             SectionHeader("04", "Labor + pricing", "Price book →") { onPriceBook() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                NumField("Hours", q.laborHours, "h${q.id}", Modifier.weight(1f)) { save(q.copy(laborHours = it)) }
-                NumField("Rate $/hr", q.laborRate, "r${q.id}", Modifier.weight(1f)) { save(q.copy(laborRate = it)) }
+                NumField(if (both) "Install hours" else "Hours", q.laborHours, "h${q.id}", Modifier.weight(1f)) { save(q.copy(laborHours = it)) }
+                if (both) NumField("Repair hours", q.repairHours, "rh${q.id}", Modifier.weight(1f)) { save(q.copy(repairHours = it)) }
+                else NumField("Rate $/hr", q.laborRate, "r${q.id}", Modifier.weight(1f)) { save(q.copy(laborRate = it)) }
+            }
+            if (both) {
+                Spacer(Modifier.height(8.dp))
+                NumField("Rate $/hr", q.laborRate, "r2${q.id}") { save(q.copy(laborRate = it)) }
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 NumField("Markup %", q.markupPct, "m${q.id}", Modifier.weight(1f)) { save(q.copy(markupPct = it)) }
-                if (q.jobType == JobType.REPAIR) NumField("Sales tax %", q.taxRatePct, "t${q.id}", Modifier.weight(1f)) { save(q.copy(taxRatePct = it)) }
+                if (q.jobType != JobType.INSTALL) NumField("Sales tax %", q.taxRatePct, "t${q.id}", Modifier.weight(1f)) { save(q.copy(taxRatePct = it)) }
                 else NumField("Round-trip miles", q.miles, "mi${q.id}", Modifier.weight(1f)) { save(q.copy(miles = it)) }
             }
-            if (q.jobType == JobType.REPAIR) {
+            if (q.jobType != JobType.INSTALL) {
                 Spacer(Modifier.height(8.dp))
                 NumField("Round-trip miles (all trips)", q.miles, "mi2${q.id}") { save(q.copy(miles = it)) }
             }
@@ -188,7 +208,11 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             SectionHeader("05", "Total")
             MoneyRow("Materials", money(totals.materialsPrice))
             MoneyRow("Labor", money(totals.labor))
-            MoneyRow(if (q.jobType == JobType.REPAIR) "Sales tax ${qtyText(q.taxRatePct)}%" else "Sales tax · new install", money(totals.salesTax))
+            if (both) {
+                MoneyRow("New install part · no tax", money(totals.installPart))
+                MoneyRow("Repair part", money(totals.repairPart))
+            }
+            MoneyRow(when (q.jobType) { JobType.REPAIR -> "Sales tax ${qtyText(q.taxRatePct)}%"; JobType.BOTH -> "Sales tax ${qtyText(q.taxRatePct)}% on repair part"; else -> "Sales tax · new install" }, money(totals.salesTax))
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Label("Quote total")
                 Text(money(totals.total), fontFamily = Condensed, fontSize = 40.sp, color = Z.text)

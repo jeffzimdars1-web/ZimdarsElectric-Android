@@ -162,17 +162,23 @@ object QuotePdf {
             facts(listOf(
                 "Customer" to listOfNotNull(customer?.name ?: q.customerName, customer?.phone?.takeIf { it.isNotBlank() }, customer?.email?.takeIf { it.isNotBlank() }).joinToString("\n"),
                 "Job site" to q.site.ifBlank { customer?.address ?: "" },
-                "Type of work" to if (q.jobType == JobType.REPAIR) "Repair / maintenance" else "New installation (capital improvement)",
+                "Type of work" to when (q.jobType) { JobType.REPAIR -> "Repair / maintenance"; JobType.BOTH -> "New installation (capital improvement) and repair, listed separately"; else -> "New installation (capital improvement)" },
                 "Planned dates" to q.scheduled.ifBlank { "To be scheduled together" },
             ))
-            if (q.title.isNotBlank() || q.notes.isNotBlank()) {
+            if (q.title.isNotBlank() || q.notes.isNotBlank() || q.repairNotes.isNotBlank()) {
                 section("Work to be done")
                 para(q.title, strong, after = 4f)
-                para(q.notes)
+                if (q.jobType == JobType.BOTH) {
+                    if (q.notes.isNotBlank()) { para("New installation", strong, after = 2f); para(q.notes) }
+                    if (q.repairNotes.isNotBlank()) { para("Repair", strong, after = 2f); para(q.repairNotes) }
+                } else para(q.notes)
             }
 
-            if (lines.isNotEmpty()) {
-                section("Materials")
+            val groups = if (q.jobType == JobType.BOTH)
+                listOf("Materials · new installation" to lines.filter { !it.repair }, "Materials · repair" to lines.filter { it.repair })
+            else listOf("Materials" to lines)
+            for ((title, group) in groups) if (group.isNotEmpty()) {
+                section(title)
                 val xQty = W - M - 190f; val xEach = W - M - 95f; val xAmt = W - M
                 val nameW = xQty - M - 70f
                 val header: () -> Unit = {
@@ -182,7 +188,7 @@ object QuotePdf {
                 }
                 header()
                 continuing = header
-                lines.forEach { l ->
+                group.forEach { l ->
                     val nl = layout(l.name, body, nameW)
                     val h = nl.height + 9f
                     need(h)
@@ -198,9 +204,21 @@ object QuotePdf {
 
             section("Price")
             val rows = buildList {
-                add("Materials" to money(t.materialsPrice))
-                add((if (q.laborHours > 0) "Labor (${qtyText(q.laborHours)} hr)" else "Labor") to money(t.labor))
-                if (q.jobType == JobType.REPAIR) add("Sales tax (${qtyText(q.taxRatePct)}%)" to money(t.salesTax))
+                if (q.jobType == JobType.BOTH) {
+                    val instMat = lines.filter { !it.repair }.sumOf { it.qty * it.unitCost } * factor
+                    val repMat = lines.filter { it.repair }.sumOf { it.qty * it.unitCost } * factor
+                    add("Install materials" to money(instMat))
+                    add("Install labor (${qtyText(q.laborHours)} hr)" to money(q.laborHours * q.laborRate))
+                    add("New installation subtotal" to money(t.installPart))
+                    add("Repair materials" to money(repMat))
+                    add("Repair labor (${qtyText(q.repairHours)} hr)" to money(q.repairHours * q.laborRate))
+                    add("Repair subtotal" to money(t.repairPart))
+                    add("Sales tax (${qtyText(q.taxRatePct)}%) on repair" to money(t.salesTax))
+                } else {
+                    add("Materials" to money(t.materialsPrice))
+                    add((if (q.laborHours > 0) "Labor (${qtyText(q.laborHours)} hr)" else "Labor") to money(t.labor))
+                    if (q.jobType == JobType.REPAIR) add("Sales tax (${qtyText(q.taxRatePct)}%)" to money(t.salesTax))
+                }
             }
             need(rows.size * 15f + 34f)
             val lx = W - M - 220f
@@ -209,9 +227,12 @@ object QuotePdf {
             y += 22f
             c.drawText("TOTAL", lx, y, paint(15f, bold = true)); c.drawText(money(t.total), W - M, y, paint(17f, bold = true).right())
             y += 14f
-            if (q.jobType != JobType.REPAIR) {
+            if (q.jobType == JobType.INSTALL) {
                 y += 4f
                 para("No sales tax: this is a capital improvement to your property. You'll sign New York State form ST-124 (Certificate of Capital Improvement) to confirm this.", small)
+            } else if (q.jobType == JobType.BOTH) {
+                y += 4f
+                para("The new installation is a capital improvement to your property, so it has no sales tax; you'll sign New York State form ST-124 for that part. Sales tax is charged on the repair part only.", small)
             }
 
             section("Terms")
@@ -264,13 +285,14 @@ object QuotePdf {
                 "Phone" to (customer?.phone ?: ""),
                 "Job site" to q.site.ifBlank { customer?.address ?: "" },
                 "Planned" to q.scheduled,
-                "Type" to if (q.jobType == JobType.REPAIR) "Repair (sales tax charged)" else "New install (get ST-124 signed)",
-                "Labor planned" to "${qtyText(q.laborHours)} hr",
+                "Type" to when (q.jobType) { JobType.REPAIR -> "Repair (sales tax charged)"; JobType.BOTH -> "Install + repair (ST-124 for install, tax on repair)"; else -> "New install (get ST-124 signed)" },
+                "Labor planned" to if (q.jobType == JobType.BOTH) "${qtyText(q.laborHours)} hr install + ${qtyText(q.repairHours)} hr repair" else "${qtyText(q.laborHours)} hr",
             ))
-            if (q.title.isNotBlank() || q.notes.isNotBlank()) {
+            if (q.title.isNotBlank() || q.notes.isNotBlank() || q.repairNotes.isNotBlank()) {
                 section("Work")
                 para(q.title, strong, after = 4f)
                 para(q.notes)
+                if (q.jobType == JobType.BOTH && q.repairNotes.isNotBlank()) { para("Repair", strong, after = 2f); para(q.repairNotes) }
             }
 
             section("Pull list")

@@ -142,18 +142,28 @@
         c.phone ? el("div", { cls: "muted", text: c.phone }) : null, c.email ? el("div", { cls: "muted", text: c.email }) : null]),
       el("div", null, [el("div", { cls: "kicker", text: "Job site" }), el("div", { text: q.site || c.address || "" })]),
       el("div", null, [el("div", { cls: "kicker", text: "Type of work" }),
-        el("div", { text: q.jobType === "REPAIR" ? "Repair / maintenance" : "New installation (capital improvement)" })]),
+        el("div", { text: q.jobType === "REPAIR" ? "Repair / maintenance" : q.jobType === "BOTH" ? "New installation (capital improvement) and repair, listed separately" : "New installation (capital improvement)" })]),
       el("div", null, [el("div", { cls: "kicker", text: "Planned dates" }), el("div", { text: q.scheduled || "To be scheduled together" })]),
     ]));
-    if (q.title || q.notes) {
+    var both = q.jobType === "BOTH";
+    if (q.title || q.notes || q.repairNotes) {
       m.appendChild(el("h2", { text: "Work to be done" }));
       if (q.title) m.appendChild(el("p", { style: "font-weight:600;margin:4px 0", text: q.title }));
+      if (both && q.notes) m.appendChild(el("p", { style: "font-weight:600;margin:8px 0 2px", text: "New installation" }));
       if (q.notes) m.appendChild(el("p", { cls: "scope", text: q.notes }));
+      if (both && q.repairNotes) {
+        m.appendChild(el("p", { style: "font-weight:600;margin:8px 0 2px", text: "Repair" }));
+        m.appendChild(el("p", { cls: "scope", text: q.repairNotes }));
+      }
     }
 
-    var lines = p.lines || [];
-    if (lines.length) {
-      m.appendChild(el("h2", { text: "Materials" }));
+    var all = p.lines || [];
+    var groups = both ? [["Materials · new installation", all.filter(function (l) { return !l.repair; })], ["Materials · repair", all.filter(function (l) { return l.repair; })]]
+      : [["Materials", all]];
+    groups.forEach(function (g) {
+      var lines = g[1];
+      if (!lines.length) return;
+      m.appendChild(el("h2", { text: g[0] }));
       var tb = el("tbody");
       lines.forEach(function (l) {
         tb.appendChild(el("tr", null, [
@@ -164,18 +174,32 @@
       m.appendChild(el("table", null, [el("thead", null, [el("tr", null, [
         el("th", { text: "Item" }), el("th", { cls: "n", text: "Qty" }), el("th", { cls: "n", text: "Each" }), el("th", { cls: "n", text: "Amount" }),
       ])]), tb]));
-    }
+    });
 
     m.appendChild(el("h2", { text: "Price" }));
     var tot = el("div", { cls: "totals" });
     function trow(k, v, cls) { tot.appendChild(el("div", cls ? { cls: cls } : null, [el("span", { text: k }), el("span", { text: v })])); }
-    trow("Materials", money(t.materials));
     var lab = p.labor || {};
-    trow(lab.hours ? "Labor (" + qty(lab.hours) + " hr)" : "Labor", money(t.labor));
-    if (q.jobType === "REPAIR") trow("Sales tax (" + qty(t.taxRate) + "%)", money(t.tax));
+    if (both) {
+      var sum = function (rep) { return all.filter(function (l) { return !!l.repair === rep; }).reduce(function (a, l) { return a + (l.total || 0); }, 0); };
+      var parts = p.parts || {};
+      trow("Install materials", money(sum(false)));
+      trow("Install labor (" + qty(lab.hours || 0) + " hr)", money(lab.installAmount || 0));
+      trow("New installation subtotal", money(parts.install || 0));
+      trow("Repair materials", money(sum(true)));
+      trow("Repair labor (" + qty(lab.repairHours || 0) + " hr)", money(lab.repairAmount || 0));
+      trow("Repair subtotal", money(parts.repair || 0));
+      trow("Sales tax (" + qty(t.taxRate) + "%) on repair", money(t.tax));
+    } else {
+      trow("Materials", money(t.materials));
+      trow(lab.hours ? "Labor (" + qty(lab.hours) + " hr)" : "Labor", money(t.labor));
+      if (q.jobType === "REPAIR") trow("Sales tax (" + qty(t.taxRate) + "%)", money(t.tax));
+    }
     trow("Total", money(t.total), "grand");
     m.appendChild(tot);
-    if (q.jobType !== "REPAIR") {
+    if (both) {
+      m.appendChild(el("div", { cls: "note", text: "The new installation is a capital improvement to your property, so it has no sales tax; you'll be asked to sign New York State form ST-124 for that part. Sales tax is charged on the repair part only." }));
+    } else if (q.jobType !== "REPAIR") {
       m.appendChild(el("div", { cls: "note", text: "No sales tax: this is a capital improvement to your property. You'll be asked to sign New York State form ST-124 (Certificate of Capital Improvement) to confirm this." }));
     }
 

@@ -68,14 +68,16 @@ object SignService {
                 .put("email", customer?.email ?: "").put("address", customer?.address ?: ""))
             .put("quote", JSONObject().put("number", q.number).put("date", q.createdAt)
                 .put("validUntil", q.createdAt + s.quoteValidDays * 86_400_000L).put("title", q.title).put("site", q.site)
-                .put("jobType", q.jobType).put("scheduled", q.scheduled).put("notes", q.notes))
+                .put("jobType", q.jobType).put("scheduled", q.scheduled).put("notes", q.notes).put("repairNotes", q.repairNotes))
             .put("lines", JSONArray().apply {
                 lines.forEach { l ->
                     put(JSONObject().put("name", l.name).put("qty", l.qty).put("unit", l.unit)
-                        .put("price", r2(l.unitCost * factor)).put("total", r2(l.qty * l.unitCost * factor)))
+                        .put("price", r2(l.unitCost * factor)).put("total", r2(l.qty * l.unitCost * factor)).put("repair", l.repair))
                 }
             })
-            .put("labor", JSONObject().put("hours", q.laborHours).put("rate", q.laborRate).put("amount", r2(t.labor)))
+            .put("labor", JSONObject().put("hours", q.laborHours).put("rate", q.laborRate).put("amount", r2(t.labor))
+                .put("repairHours", q.repairHours).put("installAmount", r2(q.laborHours * q.laborRate)).put("repairAmount", r2(q.repairHours * q.laborRate)))
+            .put("parts", JSONObject().put("install", r2(t.installPart)).put("repair", r2(t.repairPart)))
             .put("totals", JSONObject().put("materials", r2(t.materialsPrice)).put("labor", r2(t.labor))
                 .put("subtotal", r2(t.materialsPrice + t.labor)).put("taxRate", q.taxRatePct).put("tax", r2(t.salesTax)).put("total", r2(t.total)))
             .put("terms", JSONObject().put("rates", s.chargeNote).put("payment", s.paymentTerms).put("warranty", s.warranty))

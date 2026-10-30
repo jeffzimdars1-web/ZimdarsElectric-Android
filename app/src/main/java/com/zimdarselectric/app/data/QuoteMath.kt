@@ -19,14 +19,33 @@ data class QuoteTotals(
     val taxSetAside: Double,
     val takeHome: Double,
     val perHour: Double,
+    /** Install + repair jobs: the two parts before tax, as listed separately on the bill. */
+    val installPart: Double = 0.0,
+    val repairPart: Double = 0.0,
 )
+
+/** Whether this item is billed as repair (taxed) on this quote. */
+fun isRepairLine(q: Quote, l: QuoteLine) = when (q.jobType) {
+    JobType.REPAIR -> true
+    JobType.BOTH -> l.repair
+    else -> false
+}
+
+/** All labor hours on the quote (install + repair). */
+fun totalHours(q: Quote) = q.laborHours + if (q.jobType == JobType.BOTH) q.repairHours else 0.0
 
 fun computeTotals(q: Quote, lines: List<QuoteLine>, s: Settings): QuoteTotals {
     val materialsCost = lines.sumOf { it.qty * it.unitCost }
     val markup = materialsCost * q.markupPct / 100.0
     val materialsPrice = materialsCost + markup
-    val labor = q.laborHours * q.laborRate
-    val taxable = if (q.jobType == JobType.REPAIR) materialsPrice + labor else 0.0
+    val hours = totalHours(q)
+    val labor = hours * q.laborRate
+    val factor = 1 + q.markupPct / 100.0
+    val repairMaterials = lines.filter { isRepairLine(q, it) }.sumOf { it.qty * it.unitCost } * factor
+    val repairLabor = when (q.jobType) { JobType.REPAIR -> labor; JobType.BOTH -> q.repairHours * q.laborRate; else -> 0.0 }
+    val repairPart = repairMaterials + repairLabor
+    val installPart = materialsPrice + labor - repairPart
+    val taxable = repairPart
     val salesTax = taxable * q.taxRatePct / 100.0
     val total = materialsPrice + labor + salesTax
 
@@ -36,9 +55,9 @@ fun computeTotals(q: Quote, lines: List<QuoteLine>, s: Settings): QuoteTotals {
     val savings = (total - salesTax) * s.savingsPct / 100.0
     val taxSetAside = maxOf(profit, 0.0) * s.taxSetAsidePct / 100.0
     val takeHome = profit - savings - taxSetAside
-    val perHour = if (q.laborHours > 0) takeHome / q.laborHours else 0.0
+    val perHour = if (hours > 0) takeHome / hours else 0.0
     return QuoteTotals(materialsCost, markup, materialsPrice, labor, salesTax, total,
-        fuel, supplies, profit, savings, taxSetAside, takeHome, perHour)
+        fuel, supplies, profit, savings, taxSetAside, takeHome, perHour, installPart, repairPart)
 }
 
 /**

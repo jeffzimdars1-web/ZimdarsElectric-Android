@@ -39,6 +39,8 @@ object JobType {
     const val INSTALL = "INSTALL"
     /** Repair / maintenance: sales tax charged on the whole bill. */
     const val REPAIR = "REPAIR"
+    /** Both on one bill: install and repair listed separately, sales tax only on the repair part. */
+    const val BOTH = "BOTH"
 }
 
 @Entity
@@ -130,9 +132,13 @@ data class Quote(
     @ColumnInfo(defaultValue = "1") val hasTime: Boolean = true,
     /** Expected hours on site. 0 = use the quote's labor hours. */
     @ColumnInfo(defaultValue = "0") val hoursOnSite: Double = 0.0,
+    /** Install + repair jobs: labor hours for the repair part ([laborHours] is the install part). */
+    @ColumnInfo(defaultValue = "0") val repairHours: Double = 0.0,
+    /** Install + repair jobs: what the repair work is (the customer sees this). */
+    @ColumnInfo(defaultValue = "") val repairNotes: String = "",
 ) {
     /** Hours to block on the calendar. */
-    val blockHours: Double get() = if (hoursOnSite > 0) hoursOnSite else laborHours
+    val blockHours: Double get() = if (hoursOnSite > 0) hoursOnSite else laborHours + if (jobType == JobType.BOTH) repairHours else 0.0
     val awaitingSignature: Boolean get() = signToken.isNotBlank() && signedAt == null && confirmedAt == null
     /** Edited after the link went out, so the customer is looking at an older version. */
     val changedSinceSent: Boolean get() = sentAt != null && updatedAt > sentAt + 1500
@@ -148,6 +154,8 @@ data class QuoteLine(
     val qty: Double = 1.0,
     /** Your cost per unit. The customer price adds the quote's markup. */
     val unitCost: Double = 0.0,
+    /** On an install + repair job: this item is for the repair part (taxed). */
+    @ColumnInfo(defaultValue = "0") val repair: Boolean = false,
 )
 
 /** One business drive for the mileage log. */
@@ -399,6 +407,15 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/** Version 17 lets one job be part new install, part repair. */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `repairHours` REAL NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `repairNotes` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `QuoteLine` ADD COLUMN `repair` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 /** Version 15 remembers phone contacts you chose not to add. */
 val MIGRATION_14_15 = object : Migration(14, 15) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -480,7 +497,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -490,7 +507,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                 .build().also { instance = it }
         }
     }
