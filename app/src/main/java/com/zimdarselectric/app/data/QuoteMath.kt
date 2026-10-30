@@ -71,8 +71,8 @@ fun boxText(qty: Double, pack: Double): String {
 }
 
 /** "Thu, Nov 5 · 8:00 AM · about 3 hr" for quotes and the customer's copy. */
-fun scheduleText(startAt: Long?, hours: Double): String {
+fun scheduleText(startAt: Long?, hours: Double, hasTime: Boolean = true): String {
     if (startAt == null) return ""
-    val d = java.text.SimpleDateFormat("EEE, MMM d · h:mm a", Locale.US).format(java.util.Date(startAt))
+    val d = java.text.SimpleDateFormat(if (hasTime) "EEE, MMM d · h:mm a" else "EEE, MMM d · 'time TBD'", Locale.US).format(java.util.Date(startAt))
     return if (hours > 0) "$d · about ${qtyText(hours)} hr" else d
 }

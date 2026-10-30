@@ -71,13 +71,13 @@ fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
     val askNotify = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
     var pickDate by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf<LocalDate?>(null) }
-    fun withStart(start: Long?, hours: Double = q.hoursOnSite) =
-        q.copy(startAt = start, hoursOnSite = hours, scheduled = scheduleText(start, if (hours > 0) hours else q.laborHours))
+    fun withStart(start: Long?, hours: Double = q.hoursOnSite, hasTime: Boolean = q.hasTime) =
+        q.copy(startAt = start, hoursOnSite = hours, hasTime = hasTime, scheduled = scheduleText(start, if (hours > 0) hours else q.laborHours, hasTime))
 
     Row(Modifier.fillMaxWidth().background(Z.raised).clickable { pickDate = true }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Label("Job date + start time")
-            Text(q.startAt?.let { scheduleText(it, q.blockHours) } ?: "Tap to schedule", color = if (q.startAt == null) Z.muted else Z.text, fontSize = 16.sp)
+            Text(q.startAt?.let { scheduleText(it, q.blockHours, q.hasTime) } ?: "Tap to schedule", color = if (q.startAt == null) Z.muted else Z.text, fontSize = 16.sp)
         }
         Text("▾", color = Z.neon, fontSize = 18.sp)
     }
@@ -118,7 +118,7 @@ fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
         }
     }
     pickTime?.let { day ->
-        val now = q.startAt?.toLocal()?.toLocalTime() ?: LocalTime.of(8, 0)
+        val now = q.startAt?.takeIf { q.hasTime }?.toLocal()?.toLocalTime() ?: LocalTime.of(8, 0)
         val state = rememberTimePickerState(initialHour = now.hour, initialMinute = now.minute, is24Hour = false)
         androidx.compose.material3.AlertDialog(onDismissRequest = { pickTime = null },
             containerColor = Z.raised,
@@ -126,10 +126,18 @@ fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
             text = { TimePicker(state = state) },
             confirmButton = { TextButton(onClick = {
                 val start = day.atTime(state.hour, state.minute).atZone(zone).toInstant().toEpochMilli()
-                onSave(withStart(start)); pickTime = null
+                onSave(withStart(start, hasTime = true)); pickTime = null
                 if (android.os.Build.VERSION.SDK_INT >= 33) askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }) { Text("SAVE", color = Z.neon) } },
-            dismissButton = { TextButton(onClick = { pickTime = null }) { Text("CANCEL", color = Z.muted) } })
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { pickTime = null }) { Text("CANCEL", color = Z.muted) }
+                    TextButton(onClick = {
+                        onSave(withStart(day.atStartOfDay(zone).toInstant().toEpochMilli(), hasTime = false)); pickTime = null
+                        if (android.os.Build.VERSION.SDK_INT >= 33) askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }) { Text("NO SET TIME", color = Z.text) }
+                }
+            })
     }
 }
 
@@ -151,14 +159,15 @@ fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>,
         }
         Spacer(Modifier.height(6.dp))
     }
-    items(byDay[ui.day].orEmpty().sortedBy { it.startAt }, key = { "cal${it.id}" }) { q ->
+    items(byDay[ui.day].orEmpty().sortedWith(compareBy({ it.hasTime }, { it.startAt })), key = { "cal${it.id}" }) { q ->
         val t = computeTotals(q, lines.filter { it.quoteId == q.id }, settings)
         val start = q.startAt!!.toLocal()
         val end = start.plusMinutes((q.blockHours * 60).toLong())
         Row(Modifier.fillMaxWidth().clickable { nav.open(Page.EditQuote(q.id)) }.padding(vertical = 12.dp)) {
             Column(Modifier.width(78.dp)) {
-                Text(start.format(timeFmt), color = Z.text, fontFamily = Condensed, fontSize = 18.sp)
-                if (q.blockHours > 0) Label("to ${end.format(timeFmt)}")
+                Text(if (q.hasTime) start.format(timeFmt) else "Any time", color = Z.text, fontFamily = Condensed, fontSize = 18.sp)
+                if (q.hasTime && q.blockHours > 0) Label("to ${end.format(timeFmt)}")
+                else if (q.blockHours > 0) Label("about ${qtyText(q.blockHours)} hr")
             }
             Box(Modifier.width(3.dp).height(54.dp).background(statusColorFor(q.status)))
             Spacer(Modifier.width(12.dp))
@@ -218,7 +227,7 @@ private fun CalendarMonth(month: YearMonth, selected: LocalDate, byDay: Map<Loca
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(5.dp).background(statusColor(q.status)))
                                 Spacer(Modifier.width(2.dp))
-                                Text(q.startAt!!.toLocal().format(shortTime).lowercase().replace(":00", "").removeSuffix("m"),
+                                Text(if (!q.hasTime) "job" else q.startAt!!.toLocal().format(shortTime).lowercase().replace(":00", "").removeSuffix("m"),
                                     color = Z.text, fontSize = 9.sp, maxLines = 1)
                             }
                         }

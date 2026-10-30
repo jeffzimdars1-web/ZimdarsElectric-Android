@@ -224,7 +224,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** New quote already scheduled on [startAt] (from the calendar). */
     fun newQuoteAt(startAt: Long, onCreated: (Long) -> Unit) = newQuote { id ->
         viewModelScope.launch {
-            dao.quote(id)?.let { dao.updateQuote(it.copy(startAt = startAt, scheduled = com.zimdarselectric.app.data.scheduleText(startAt, 0.0))) }
+            dao.quote(id)?.let { dao.updateQuote(it.copy(startAt = startAt, hasTime = false, scheduled = com.zimdarselectric.app.data.scheduleText(startAt, 0.0, false))) }
             onCreated(id)
         }
     }

@@ -49,7 +49,7 @@ object Reminders {
             val c = Calendar.getInstance().apply { timeInMillis = start; add(Calendar.DAY_OF_YEAR, -1); set(Calendar.HOUR_OF_DAY, s.remindNightHour); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0) }
             out += KIND_NIGHT to c.timeInMillis
         }
-        if (s.remindMinutesBefore > 0) out += KIND_SOON to (start - s.remindMinutesBefore * 60_000L)
+        if (s.remindMinutesBefore > 0 && q.hasTime) out += KIND_SOON to (start - s.remindMinutesBefore * 60_000L)
         return out
     }
 
@@ -73,7 +73,7 @@ object Reminders {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Job reminders", NotificationManager.IMPORTANCE_HIGH))
         val time = SimpleDateFormat("h:mm a", Locale.US).format(Date(start))
-        val title = (if (kind == KIND_NIGHT) "Tomorrow $time" else "Coming up at $time") + ": " + q.title.ifBlank { "Job" }
+        val title = (if (kind == KIND_NIGHT) (if (q.hasTime) "Tomorrow $time" else "Tomorrow (time TBD)") else "Coming up at $time") + ": " + q.title.ifBlank { "Job" }
         val text = listOf(q.number, q.customerName, q.site).filter { it.isNotBlank() }.joinToString(" · ")
         val open = PendingIntent.getActivity(context, q.id.toInt(),
             Intent(context, MainActivity::class.java).putExtra(EXTRA_QUOTE, q.id).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),

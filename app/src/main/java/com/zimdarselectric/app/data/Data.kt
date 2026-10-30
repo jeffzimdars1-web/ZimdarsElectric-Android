@@ -109,6 +109,8 @@ data class Quote(
     @ColumnInfo(defaultValue = "") val signaturePath: String = "",
     /** When the job starts (date + time). Null = not scheduled. */
     val startAt: Long? = null,
+    /** False when only the day is set ("time TBD"). */
+    @ColumnInfo(defaultValue = "1") val hasTime: Boolean = true,
     /** Expected hours on site. 0 = use the quote's labor hours. */
     @ColumnInfo(defaultValue = "0") val hoursOnSite: Double = 0.0,
 ) {
@@ -341,6 +343,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Version 12 lets a job be on a day with no set start time. */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `hasTime` INTEGER NOT NULL DEFAULT 1")
+    }
+}
+
 /** Version 11 adds job reminder settings. */
 val MIGRATION_10_11 = object : Migration(10, 11) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -388,7 +397,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -398,7 +407,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                 .build().also { instance = it }
         }
     }

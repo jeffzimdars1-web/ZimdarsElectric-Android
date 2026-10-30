@@ -169,7 +169,7 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
             items(shown, key = { it.id }) { q: Quote ->
                 val t = computeTotals(q, lines.filter { it.quoteId == q.id }, settings)
                 ListRow(q.title.ifBlank { "Untitled job" }, ("${q.number} · ${q.customerName.ifBlank { "No customer" }} · ${money(t.total)}" +
-                    (q.startAt?.let { " · " + java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it)) } ?: "")).uppercase(),
+                    (q.startAt?.let { " · " + java.text.SimpleDateFormat(if (q.hasTime) "EEE MMM d, h:mm a" else "EEE MMM d", java.util.Locale.US).format(java.util.Date(it)) } ?: "")).uppercase(),
                     onClick = { nav.open(Page.EditQuote(q.id)) }) { StatusDot(q.status, statusColor(q.status)) }
             }
         }
