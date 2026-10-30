@@ -43,6 +43,13 @@
   .err { color: var(--warn); font-weight: 600; margin-top: 10px; min-height: 1em; }
   .center { padding: 60px 20px; text-align: center; }
   .small { font-size: 13px; }
+  .resched { border: 1.5px dashed var(--ink); padding: 14px; margin-top: 14px; display: grid; gap: 10px; }
+  .resched label { font-size: 14px; font-weight: 600; }
+  .resched input, .resched textarea, .resched select { width: 100%; font-size: 17px; padding: 10px; border: 1px solid #9aa2a8; border-radius: 0; background: #fff; font-family: inherit; }
+  .parts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .parts button { padding: 11px 4px; font-size: 13px; }
+  .parts button.on { background: var(--ink); color: var(--neon); }
+  .linkbtn { background: none; color: var(--ink); text-decoration: underline; padding: 12px 0 0; font: 600 15px system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 </style>
 </head>
 <body>
@@ -178,6 +185,7 @@
             .finally(function () { if (btn.isConnected) { btn.disabled = false; btn.textContent = "Confirm appointment"; } });
         });
         actions.appendChild(btn); actions.appendChild(err);
+        actions.appendChild(rescheduleBlock(btn));
       }
       if (status !== "canceled" && a.start) {
         var cal = el("button", { cls: "btn btn-line", type: "button", text: "Add to calendar" });
@@ -195,6 +203,75 @@
       }
     }
     showActions(d.status, d.confirmed_at);
+
+    // "Need a different day or time?" — sends the request to the contractor's app.
+    function partLabel(rs) {
+      var day = new Date(rs.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+      if (rs.part === "time" && rs.time) {
+        var hm = rs.time.split(":"), h = +hm[0], ap = h >= 12 ? "PM" : "AM";
+        return day + " at " + ((h % 12) || 12) + ":" + hm[1] + " " + ap;
+      }
+      return day + (rs.part === "morning" ? ", morning" : rs.part === "afternoon" ? ", afternoon" : ", any time");
+    }
+    function rescheduleBlock(confirmBtn) {
+      var wrap = el("div");
+      function sentNote(rs) {
+        wrap.innerHTML = "";
+        wrap.appendChild(el("div", { cls: "note" }, [
+          el("b", { text: "New time requested: " }), partLabel(rs) + ". ",
+          (b.owner || "We") + " will text you to confirm. You don't need to do anything else.",
+        ]));
+      }
+      if (d.reschedule) { sentNote(d.reschedule); return wrap; }
+      var open = el("button", { cls: "linkbtn", type: "button", text: "Need a different day or time?" });
+      wrap.appendChild(open);
+      open.addEventListener("click", function () {
+        open.remove();
+        var form = el("div", { cls: "resched" });
+        var today = new Date(); var iso = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+        var date = el("input", { type: "date", min: iso });
+        form.appendChild(el("label", { text: "What day works for you?" })); form.appendChild(date);
+        form.appendChild(el("label", { text: "What time?" }));
+        var part = "morning";
+        var parts = el("div", { cls: "parts" });
+        var time = el("input", { type: "time", step: "900", style: "display:none" });
+        [["morning", "Morning"], ["afternoon", "Afternoon"], ["time", "Exact time"]].forEach(function (p) {
+          var bt = el("button", { cls: "btn btn-line" + (p[0] === part ? " on" : ""), type: "button", text: p[1] });
+          bt.addEventListener("click", function () {
+            part = p[0];
+            parts.querySelectorAll("button").forEach(function (x) { x.classList.remove("on"); }); bt.classList.add("on");
+            time.style.display = part === "time" ? "block" : "none";
+          });
+          parts.appendChild(bt);
+        });
+        form.appendChild(parts); form.appendChild(time);
+        form.appendChild(el("label", { text: "Anything else? (optional)" }));
+        var note = el("textarea", { rows: "2", maxlength: "300", placeholder: "e.g. I'm home after 3 on weekdays" });
+        form.appendChild(note);
+        var e2 = el("div", { cls: "err", role: "alert" });
+        var send = el("button", { cls: "btn-main", type: "button", text: "Send request" });
+        form.appendChild(send); form.appendChild(e2);
+        wrap.appendChild(form);
+        send.addEventListener("click", function () {
+          e2.textContent = "";
+          if (!date.value) { e2.textContent = "Please pick a day."; return; }
+          if (part === "time" && !time.value) { e2.textContent = "Please pick a time."; return; }
+          send.disabled = true; send.textContent = "Sending…";
+          fetch(API, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "reschedule", t: token, date: date.value, part: part, time: time.value || null, note: note.value.trim() }) })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+              if (res.ok) { if (confirmBtn) confirmBtn.style.display = "none"; sentNote(res.j.reschedule); return; }
+              if (res.j.error === "confirmed") { e2.textContent = "This appointment is already confirmed. Please call or text to change it."; return; }
+              if (res.j.error === "canceled") { e2.textContent = "This appointment was changed. Please check for a newer message from us."; return; }
+              throw new Error();
+            })
+            .catch(function () { e2.textContent = "Couldn't send. Check your connection and try again."; })
+            .finally(function () { if (send.isConnected) { send.disabled = false; send.textContent = "Send request"; } });
+        });
+      });
+      return wrap;
+    }
   }
 })();
 </script>

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -75,6 +76,31 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
             TextFieldSaved("What it's for (e.g. Service call)", q.title, "atitle${q.id}") { save(q.copy(title = it)) }
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("What's going on (e.g. bedroom light won't turn on)", q.notes, "anotes${q.id}", singleLine = false) { save(q.copy(notes = it)) }
+
+            if (q.hasRescheduleRequest) {
+                Spacer(Modifier.height(12.dp))
+                Column(Modifier.fillMaxWidth().background(Z.neonTint).padding(14.dp)) {
+                    Label("${q.customerName.ifBlank { "Customer" }} asked for a different time", color = Z.warn)
+                    Text(q.rescheduleText, color = Z.text, fontSize = 20.sp, fontFamily = Condensed)
+                    if (q.rescheduleNote.isNotBlank()) Text("\"${q.rescheduleNote}\"", color = Z.muted, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    if (q.startAt == q.rescheduleWhen) Text("On your calendar now. Tap Send updated confirmation below so they can confirm it.", color = Z.ok, fontSize = 14.sp)
+                    else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NeonButton("Use this time", Modifier.weight(1f), arrow = false) {
+                            save(q.copy(startAt = q.rescheduleWhen, hasTime = true,
+                                scheduled = q.rescheduleText, rescheduleRequestedAt = q.rescheduleRequestedAt))
+                        }
+                        GhostButton("Call / text", Modifier.weight(1f).height(54.dp)) {
+                            customer?.phone?.takeIf { it.isNotBlank() }?.let { p ->
+                                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:$p"))) }
+                            }
+                        }
+                    }
+                    Text("\"Use this time\" puts it on your calendar (morning = 9 AM, afternoon = 1 PM; change it below if needed). Then tap Send updated confirmation so they can confirm the new time.",
+                        color = Z.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    Label("Dismiss", modifier = Modifier.clickable { save(q.copy(rescheduleText = "")) }.padding(top = 8.dp))
+                }
+            }
 
             SectionHeader("02", "When")
             SchedulePicker(q, customer, settings) { save(it) }

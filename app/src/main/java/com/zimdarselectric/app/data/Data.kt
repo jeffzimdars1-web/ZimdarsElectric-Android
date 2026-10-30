@@ -174,7 +174,14 @@ data class Quote(
     val reviewAskedAt: Long? = null,
     /** Your own note about the visit (gate code, call first, bring the ladder). Never sent to the customer. */
     @ColumnInfo(defaultValue = "") val privateNote: String = "",
+    /** Appointment: the customer asked for a different day/time on the confirmation page. */
+    val rescheduleRequestedAt: Long? = null,
+    val rescheduleWhen: Long? = null,
+    @ColumnInfo(defaultValue = "") val rescheduleText: String = "",
+    @ColumnInfo(defaultValue = "") val rescheduleNote: String = "",
 ) {
+    /** A new-time request that came in after the last confirmation was sent and hasn't been handled. */
+    val hasRescheduleRequest: Boolean get() = rescheduleRequestedAt != null && rescheduleText.isNotBlank() && rescheduleRequestedAt > (sentAt ?: 0L)
     /** Install work here needs a signed ST-124 (new install, or the install part of install + repair). */
     val needsSt124: Boolean get() = kind == Kind.QUOTE && (jobType == JobType.INSTALL || jobType == JobType.BOTH)
     /** Hours to block on the calendar. */
@@ -486,6 +493,16 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/** Version 21: customer can ask for a different appointment time. */
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `rescheduleRequestedAt` INTEGER")
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `rescheduleWhen` INTEGER")
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `rescheduleText` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `Quote` ADD COLUMN `rescheduleNote` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** Version 20: your own note on a job or appointment. */
 val MIGRATION_19_20 = object : Migration(19, 20) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -620,7 +637,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class, JobPhoto::class],
-    version = 20,
+    version = 21,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -632,7 +649,7 @@ abstract class AppDb : RoomDatabase() {
         fun close() = synchronized(this) { instance?.close(); instance = null }
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
                 .build().also { instance = it }
         }
     }

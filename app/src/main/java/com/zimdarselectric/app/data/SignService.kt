@@ -212,11 +212,56 @@ object SignService {
                     dao.updateQuote(updated)
                     notifyConfirmed(context, updated)
                 }
-                "sent" -> if (viewed != null && q.viewedAt == null) dao.updateQuote(q.copy(viewedAt = viewed))
+                "sent" -> {
+                    var updated = if (viewed != null && q.viewedAt == null) q.copy(viewedAt = viewed) else q
+                    item.optJSONObject("reschedule")?.let { rs ->
+                        val at = parseIso(rs.optString("requested_at")) ?: return@let
+                        if (at <= (q.rescheduleRequestedAt ?: 0L)) return@let
+                        val (whenMs, label) = rescheduleTime(rs)
+                        updated = updated.copy(rescheduleRequestedAt = at, rescheduleWhen = whenMs, rescheduleText = label,
+                            rescheduleNote = rs.optString("note").takeIf { it != "null" }.orEmpty())
+                        notifyReschedule(context, updated)
+                    }
+                    if (updated != q) dao.updateQuote(updated)
+                }
                 "canceled" -> {} // replaced by a newer link
             }
         }
         justSigned
+    }
+
+    /** The requested day/time as a time on this phone (morning = 9 AM, afternoon = 1 PM) and a readable label. */
+    fun rescheduleTime(rs: JSONObject): Pair<Long, String> {
+        val d = java.time.LocalDate.parse(rs.optString("date"))
+        val part = rs.optString("part")
+        val t = when (part) {
+            "time" -> runCatching { java.time.LocalTime.parse(rs.optString("time")) }.getOrDefault(java.time.LocalTime.of(9, 0))
+            "afternoon" -> java.time.LocalTime.of(13, 0)
+            else -> java.time.LocalTime.of(9, 0)
+        }
+        val ms = d.atTime(t).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val day = d.format(java.time.format.DateTimeFormatter.ofPattern("EEE MMM d", java.util.Locale.US))
+        val label = when (part) {
+            "time" -> day + " at " + t.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US))
+            "morning" -> "$day, morning"
+            "afternoon" -> "$day, afternoon"
+            else -> "$day, any time"
+        }
+        return ms to label
+    }
+
+    fun notifyReschedule(context: Context, q: Quote) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "Customer signatures", NotificationManager.IMPORTANCE_HIGH))
+        val open = PendingIntent.getActivity(context, 500_000 + q.id.toInt(), Intent(context, MainActivity::class.java).putExtra(Reminders.EXTRA_QUOTE, q.id)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val text = q.rescheduleText + if (q.rescheduleNote.isNotBlank()) " · \"${q.rescheduleNote}\"" else ""
+        val n = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_stat_bolt)
+            .setContentTitle("${q.customerName.ifBlank { "Customer" }} asked for a different time")
+            .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(open).setAutoCancel(true).build()
+        runCatching { NotificationManagerCompat.from(context).notify(500_000 + q.id.toInt(), n) }
     }
 
     fun notifySt124(context: Context, q: Quote) {
