@@ -156,7 +156,7 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
             Title("Quotes", 38)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.width(92.dp)) { GhostButton("+ Appt", Modifier.fillMaxWidth().height(54.dp)) { vm.newAppointment(null) { nav.open(Page.EditQuote(it)) } } }
-                Box(Modifier.width(92.dp)) { NeonButton("+ Quote", Modifier.fillMaxWidth()) { vm.newQuote { nav.open(Page.EditQuote(it)) } } }
+                Box(Modifier.width(92.dp)) { NeonButton("+ Quote", Modifier.fillMaxWidth(), arrow = false) { vm.newQuote { nav.open(Page.EditQuote(it)) } } }
             }
         }
         Spacer(Modifier.height(14.dp))

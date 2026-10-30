@@ -17,6 +17,7 @@ import com.zimdarselectric.app.data.SignService
 import com.zimdarselectric.app.data.Settings
 import com.zimdarselectric.app.data.Status
 import com.zimdarselectric.app.data.StockMove
+import com.zimdarselectric.app.data.Trip
 import com.zimdarselectric.app.data.holdsByMaterial
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -237,6 +238,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun appointmentToQuote(q: Quote) = viewModelScope.launch {
         dao.quote(q.id)?.let { dao.updateQuote(it.copy(kind = com.zimdarselectric.app.data.Kind.QUOTE, title = if (it.title == "Service call") "" else it.title, updatedAt = System.currentTimeMillis())) }
     }
+
+    // ---------- GPS: on my way, job clock, mileage ----------
+    val trips = hot(dao.trips(), emptyList())
+
+    /** Texts the customer your drive time and starts tracking the drive. [onResult] gets a short status line. */
+    fun onMyWay(q: Quote, onResult: (String) -> Unit) = viewModelScope.launch {
+        val s = dao.settingsNow() ?: Settings()
+        var job = dao.quote(q.id) ?: return@launch
+        if ((job.siteLat == null || job.siteLon == null) && job.site.isNotBlank()) {
+            com.zimdarselectric.app.data.Geo.locate(job.site)?.let { p -> job = job.copy(siteLat = p.lat, siteLon = p.lon); dao.updateQuote(job) }
+        }
+        val here = com.zimdarselectric.app.data.Geo.here(app)
+        val tLat = job.siteLat; val tLon = job.siteLon
+        val minutes = if (here != null && tLat != null && tLon != null)
+            com.zimdarselectric.app.data.Geo.route(here.latitude, here.longitude, tLat, tLon).minutes else null
+        val c = job.customerId?.let { dao.customer(it) }
+        val texted = if (minutes != null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.zimdarselectric.app.data.CustomerTexts.sendText(app, job, c, com.zimdarselectric.app.data.CustomerTexts.onMyWay(job, c, s, minutes))
+        } else false
+        com.zimdarselectric.app.data.DriveService.startToJob(app, job.id)
+        onResult(when {
+            minutes == null && tLat == null -> "Couldn't find that address on the map. Tracking miles; tap Stop when you get there."
+            minutes == null -> "Couldn't get your location. Tracking miles; tap Stop when you get there."
+            texted -> "Texted ${job.customerName.substringBefore(' ')}: about $minutes min. Tracking your drive."
+            else -> "About $minutes min away. Tap the notification to send the text. Tracking your drive."
+        })
+    }
+
+    /** Saves where a job is without counting it as an edit to the quote. */
+    fun setSiteCoords(q: Quote, lat: Double, lon: Double) = viewModelScope.launch { dao.quote(q.id)?.let { dao.updateQuote(it.copy(siteLat = lat, siteLon = lon)) } }
+
+    fun markArrived(q: Quote) = viewModelScope.launch { dao.quote(q.id)?.let { dao.updateQuote(it.copy(arrivedAt = System.currentTimeMillis(), leftAt = null)) } }
+    fun leaveJob(q: Quote) = viewModelScope.launch { dao.quote(q.id)?.let { dao.updateQuote(it.copy(leftAt = System.currentTimeMillis())) } }
+    fun saveTrip(t: Trip) = viewModelScope.launch { if (t.id == 0L) dao.insertTrip(t) else dao.updateTrip(t) }
+    fun deleteTrip(t: Trip) = viewModelScope.launch { dao.deleteTrip(t) }
 
     /** New quote already scheduled on [startAt] (from the calendar). */
     fun newQuoteAt(startAt: Long, onCreated: (Long) -> Unit) = newQuote { id ->

@@ -77,6 +77,8 @@ dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
+    // Free map (OpenStreetMap tiles) for the job map.
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
     // Checks for customer signatures in the background.
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 

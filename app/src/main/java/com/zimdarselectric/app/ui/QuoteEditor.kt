@@ -101,6 +101,11 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
         Divider()
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
             SectionHeader("01", "Job")
+            if (lines.isEmpty() && q.laborHours == 0.0 && q.status == Status.DRAFT) {
+                Label("Just a visit to look first? Make it an appointment →", color = Z.info, modifier = Modifier.clickable {
+                    save(q.copy(kind = com.zimdarselectric.app.data.Kind.APPT, textCustomer = true, jobType = JobType.REPAIR))
+                }.padding(bottom = 10.dp))
+            }
             TextFieldSaved("Job name (e.g. 200A service upgrade)", q.title, "title${q.id}") { save(q.copy(title = it)) }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().clickable { pickCustomer = true }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -112,9 +117,11 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             }
             Divider()
             Spacer(Modifier.height(8.dp))
-            TextFieldSaved("Job site address", q.site, "site${q.id}") { save(q.copy(site = it)) }
+            AddressField("Job site address", q.site, "site${q.id}", onValue = { save(q.copy(site = it, siteLat = null, siteLon = null)) },
+                onPlace = { p -> save(q.copy(site = p.label, siteLat = p.lat, siteLon = p.lon)) })
             Spacer(Modifier.height(8.dp))
             SchedulePicker(q, customers.firstOrNull { it.id == q.customerId }, settings) { save(it) }
+            DriveSection(vm, q)
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("What you'll do (the customer sees this)", q.notes, "notes${q.id}", singleLine = false) { save(q.copy(notes = it)) }
 
@@ -331,7 +338,7 @@ fun CustomerPicker(customers: List<Customer>, onDismiss: () -> Unit, onNew: (Cus
             Spacer(Modifier.height(6.dp))
             Field("Phone", phone, { phone = it })
             Spacer(Modifier.height(6.dp))
-            Field("Address", address, { address = it })
+            AddressField("Address", address, "newcust", onValue = { address = it })
         }
     } else {
         var search by remember { mutableStateOf("") }

@@ -39,17 +39,29 @@ object CustomerTexts {
     fun canSend(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
 
     /** Sends the reminder text. If the phone won't let the app send it, posts a notification to send it with one tap. */
-    fun remind(context: Context, q: Quote, customer: Customer?, s: Settings, nightBefore: Boolean) {
+    fun remind(context: Context, q: Quote, customer: Customer?, s: Settings, nightBefore: Boolean) =
+        sendText(context, q, customer, message(q, customer, s, nightBefore))
+
+    /** "On my way, about 18 minutes" text. */
+    fun onMyWay(q: Quote, customer: Customer?, s: Settings, minutes: Int): String {
+        val first = (customer?.name ?: q.customerName).trim().substringBefore(' ').ifBlank { "there" }
+        val me = listOf(s.ownerName.trim(), s.businessName.trim()).filter { it.isNotBlank() }.let { if (it.size == 2) "${it[0]} with ${it[1]}" else it.firstOrNull() ?: "your electrician" }
+        val eta = if (minutes <= 2) "just a couple of minutes" else "about $minutes minutes"
+        return "Hi $first, it's $me. I'm on my way and should be there in $eta. See you soon!"
+    }
+
+    /** Texts the customer from this phone. Returns true if it went out; otherwise leaves a tap-to-send notification. */
+    fun sendText(context: Context, q: Quote, customer: Customer?, text: String): Boolean {
         val phone = customer?.phone?.filter { it.isDigit() || it == '+' }.orEmpty()
-        if (phone.length < 7) { notify(context, q, "Couldn't text ${q.customerName.ifBlank { "the customer" }}", "No cell number saved for them.", null); return }
-        val text = message(q, customer, s, nightBefore)
+        if (phone.length < 7) { notify(context, q, "Couldn't text ${q.customerName.ifBlank { "the customer" }}", "No cell number saved for them.", null); return false }
         val sent = canSend(context) && runCatching {
             val sms = if (Build.VERSION.SDK_INT >= 31) context.getSystemService(SmsManager::class.java) else @Suppress("DEPRECATION") SmsManager.getDefault()
             sms.sendMultipartTextMessage(phone, null, sms.divideMessage(text), null, null)
         }.isSuccess
         val who = (customer?.name ?: q.customerName).ifBlank { phone }
-        if (sent) notify(context, q, "Texted $who a reminder", text, null)
-        else notify(context, q, "Tap to text $who their reminder", text, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")).putExtra("sms_body", text))
+        if (sent) notify(context, q, "Texted $who", text, null)
+        else notify(context, q, "Tap to text $who", text, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")).putExtra("sms_body", text))
+        return sent
     }
 
     private fun notify(context: Context, q: Quote, title: String, text: String, tap: Intent?) {

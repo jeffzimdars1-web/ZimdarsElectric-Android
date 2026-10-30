@@ -62,7 +62,8 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
             }
             Divider()
             Spacer(Modifier.height(8.dp))
-            TextFieldSaved("Address", q.site, "asite${q.id}") { save(q.copy(site = it)) }
+            AddressField("Address", q.site, "asite${q.id}", onValue = { save(q.copy(site = it, siteLat = null, siteLon = null)) },
+                onPlace = { p -> save(q.copy(site = p.label, siteLat = p.lat, siteLon = p.lon)) })
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("What it's for (e.g. Service call)", q.title, "atitle${q.id}") { save(q.copy(title = it)) }
             Spacer(Modifier.height(8.dp))
@@ -70,6 +71,7 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
 
             SectionHeader("02", "When")
             SchedulePicker(q, customer, settings) { save(it) }
+            DriveSection(vm, q)
 
             SectionHeader("03", "After the visit")
             Text("Once you know the fix, turn this into a quote. The customer, address, date and notes carry over, and you add the materials and labor.",

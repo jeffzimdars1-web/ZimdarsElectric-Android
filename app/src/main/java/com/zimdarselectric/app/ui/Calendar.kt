@@ -176,13 +176,14 @@ fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>,
     val byDay = scheduled.groupBy { it.startAt!!.toLocal().toLocalDate() }
     item {
         CalendarMonth(ui.month, ui.day, byDay, onMonth = { ui.month = it }, onDay = { ui.day = it })
+        Label("See upcoming jobs on a map →", color = Z.neon, modifier = Modifier.clickable { nav.open(Page.JobMap) }.padding(top = 10.dp))
         Spacer(Modifier.height(14.dp))
         val title = ui.day.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US))
         SectionHeader("", title, (byDay[ui.day]?.size ?: 0).let { if (it == 0) null else "$it job${if (it == 1) "" else "s"}" })
         if (byDay[ui.day].isNullOrEmpty()) Text("Nothing scheduled this day.", color = Z.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 10.dp))
         val dayMillis = ui.day.atStartOfDay(zone).toInstant().toEpochMilli()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NeonButton("+ Appointment", Modifier.weight(1f)) { vm.newAppointment(dayMillis) { nav.open(Page.EditQuote(it)) } }
+            NeonButton("+ Appointment", Modifier.weight(1f), arrow = false) { vm.newAppointment(dayMillis) { nav.open(Page.EditQuote(it)) } }
             GhostButton("+ Quote", Modifier.weight(1f).height(54.dp)) { vm.newQuoteAt(dayMillis) { nav.open(Page.EditQuote(it)) } }
         }
         Spacer(Modifier.height(6.dp))

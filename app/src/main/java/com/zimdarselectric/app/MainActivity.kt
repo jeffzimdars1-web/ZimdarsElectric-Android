@@ -72,6 +72,7 @@ sealed interface Page {
     data object Settings : Page
     data class ExpenseDetail(val id: Long) : Page
     data object PriceBook : Page
+    data object JobMap : Page
 }
 
 class Nav {
@@ -100,6 +101,7 @@ fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () ->
                 Page.Settings -> SettingsScreen(vm, onBack = { nav.back() })
                 is Page.ExpenseDetail -> ExpenseDetailScreen(vm, top.id, onBack = { nav.back() })
                 Page.PriceBook -> PriceBookScreen(vm, onBack = { nav.back() })
+                Page.JobMap -> com.zimdarselectric.app.ui.JobMapScreen(vm, nav, onBack = { nav.back() })
                 null -> when (nav.tab) {
                     Tab.HOME -> HomeScreen(vm, nav)
                     Tab.QUOTES -> QuotesScreen(vm, nav)

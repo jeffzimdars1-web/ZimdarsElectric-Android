@@ -130,7 +130,9 @@ fun BooksScreen(vm: AppViewModel, nav: Nav) {
     val salesTax = paid.sumOf { q -> computeTotals(q, lines.filter { it.quoteId == q.id }, settings).salesTax }
     val yearExpenses = expenses.filter { inYear(it.date) }
     val spent = yearExpenses.sumOf { it.amount }
-    val net = income - salesTax - spent
+    val trips by vm.trips.collectAsState()
+    val mileage = trips.filter { inYear(it.startedAt) }.sumOf { it.miles * com.zimdarselectric.app.data.Geo.irsRate(it.startedAt) }
+    val net = income - salesTax - spent - mileage
 
     // Search + month filter for the expense list
     val ui = vm.booksUi
@@ -181,10 +183,12 @@ fun BooksScreen(vm: AppViewModel, nav: Nav) {
             MoneyRow("Income (jobs paid)", money(income))
             if (salesTax > 0) MoneyRow("Sales tax collected (owed to NY)", "−" + money(salesTax))
             MoneyRow("Expenses", "−" + money(spent))
+            if (mileage > 0) MoneyRow("Mileage (IRS rate)", "−" + money(mileage))
             if (net > 0) {
                 MoneyRow("Savings ${qtyText(settings.savingsPct)}%", money((income - salesTax) * settings.savingsPct / 100), Z.ok)
                 MoneyRow("Tax set-aside ${qtyText(settings.taxSetAsidePct)}%", money(net * settings.taxSetAsidePct / 100), Z.info)
             }
+            MileageSection(vm)
             SectionHeader("01", "By tax category")
             yearExpenses.groupBy { it.category }.toList().sortedByDescending { (_, l) -> l.sumOf { it.amount } }.forEach { (cat, l) ->
                 MoneyRow(cat, money(l.sumOf { it.amount }))
@@ -280,6 +284,7 @@ fun MoreScreen(nav: Nav) {
         Spacer(Modifier.height(14.dp))
         Divider()
         MoreRow("01", "Price book", "What to charge · how to quote it") { nav.open(Page.PriceBook) }
+        MoreRow("·", "Job map", "Upcoming jobs + directions") { nav.open(Page.JobMap) }
         MoreRow("02", "Customers", "Call, text, directions, new quote") { nav.open(Page.Customers) }
         MoreRow("03", "Tools + calculators", "Voltage drop · more coming") { nav.open(Page.Tools) }
         MoreRow("04", "Settings", "Business info · rates · updates · v${Updater.currentVersion}") { nav.open(Page.Settings) }
@@ -349,7 +354,7 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
             Field("Name", name, { name = it }); Spacer(Modifier.height(6.dp))
             Field("Phone", phone, { phone = it }); Spacer(Modifier.height(6.dp))
             Field("Email", email, { email = it }); Spacer(Modifier.height(6.dp))
-            Field("Address", address, { address = it }); Spacer(Modifier.height(6.dp))
+            AddressField("Address", address, "caddr${c.id}", onValue = { address = it }); Spacer(Modifier.height(6.dp))
             Field("Notes (panel location, gate code…)", notes, { notes = it }, singleLine = false)
         }
     }
@@ -528,6 +533,9 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 TextFieldSaved("Your first name (in texts)", s.ownerName, "own", Modifier.weight(1f)) { save(s.copy(ownerName = it.trim())) }
                 NumField("Give or take (min)", s.arrivalWindow.toDouble(), "aw", Modifier.weight(1f)) { save(s.copy(arrivalWindow = it.toInt().coerceAtLeast(0))) }
+            }
+            Row(Modifier.fillMaxWidth().clickable { save(s.copy(textOnArrival = !s.textOnArrival)) }.padding(vertical = 8.dp)) {
+                Text((if (s.textOnArrival) "✓  " else "○  ") + "Text the customer \"I'm here\" when GPS sees me arrive", color = Z.text, fontSize = 15.sp)
             }
             Text("Customer reminder texts go out from your phone at the same times, when \"Text the customer reminders\" is on for that job.", color = Z.muted, fontSize = 12.sp)
 

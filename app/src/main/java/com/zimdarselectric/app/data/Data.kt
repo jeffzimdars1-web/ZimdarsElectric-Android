@@ -118,6 +118,12 @@ data class Quote(
     @ColumnInfo(defaultValue = "QUOTE") val kind: String = Kind.QUOTE,
     /** Text the customer a reminder the evening before and an hour before (from your phone). */
     @ColumnInfo(defaultValue = "0") val textCustomer: Boolean = false,
+    /** Where the job is, for arrival and the map (from the address). */
+    val siteLat: Double? = null,
+    val siteLon: Double? = null,
+    /** When you got there and when you left (job clock). */
+    val arrivedAt: Long? = null,
+    val leftAt: Long? = null,
     /** False when only the day is set ("time TBD"). */
     @ColumnInfo(defaultValue = "1") val hasTime: Boolean = true,
     /** Expected hours on site. 0 = use the quote's labor hours. */
@@ -140,6 +146,21 @@ data class QuoteLine(
     val qty: Double = 1.0,
     /** Your cost per unit. The customer price adds the quote's markup. */
     val unitCost: Double = 0.0,
+)
+
+/** One business drive for the mileage log. */
+@Entity
+data class Trip(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val startedAt: Long,
+    val endedAt: Long = startedAt,
+    val miles: Double,
+    @ColumnInfo(defaultValue = "") val fromLabel: String = "",
+    @ColumnInfo(defaultValue = "") val toLabel: String = "",
+    val quoteId: Long? = null,
+    @ColumnInfo(defaultValue = "") val purpose: String = "",
+    /** Typed in by you instead of tracked by GPS. */
+    @ColumnInfo(defaultValue = "0") val manual: Boolean = false,
 )
 
 @Entity
@@ -201,6 +222,8 @@ data class Settings(
     val quoteValidDays: Int = 30,
     /** How you charge, shown to every customer on quotes and the signing page. */
     @ColumnInfo(defaultValue = CHARGE_NOTE) val chargeNote: String = CHARGE_NOTE,
+    /** Text the customer "I'm here" when GPS sees you arrive. */
+    @ColumnInfo(defaultValue = "0") val textOnArrival: Boolean = false,
     /** Your first name, used in reminder texts to customers. */
     @ColumnInfo(defaultValue = "Jeff") val ownerName: String = "Jeff",
     /** "Give or take" minutes in customer reminder texts. */
@@ -314,6 +337,12 @@ interface AppDao {
 
     @Upsert suspend fun saveSettings(s: Settings)
 
+    @Query("SELECT * FROM Trip ORDER BY startedAt DESC")
+    fun trips(): Flow<List<Trip>>
+    @Insert suspend fun insertTrip(t: Trip): Long
+    @Update suspend fun updateTrip(t: Trip)
+    @Delete suspend fun deleteTrip(t: Trip)
+
     @Query("SELECT * FROM Attachment ORDER BY addedAt")
     fun attachments(): Flow<List<Attachment>>
 
@@ -353,6 +382,16 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         }
         listOf("sentAt", "viewedAt", "signedAt").forEach { db.execSQL("ALTER TABLE `Quote` ADD COLUMN `$it` INTEGER") }
         db.execSQL("ALTER TABLE `Settings` ADD COLUMN `signKey` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+/** Version 14 adds GPS: job locations, job clock, mileage log. */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf("siteLat", "siteLon").forEach { db.execSQL("ALTER TABLE `Quote` ADD COLUMN `$it` REAL") }
+        listOf("arrivedAt", "leftAt").forEach { db.execSQL("ALTER TABLE `Quote` ADD COLUMN `$it` INTEGER") }
+        db.execSQL("ALTER TABLE `Settings` ADD COLUMN `textOnArrival` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `Trip` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startedAt` INTEGER NOT NULL, `endedAt` INTEGER NOT NULL, `miles` REAL NOT NULL, `fromLabel` TEXT NOT NULL DEFAULT '', `toLabel` TEXT NOT NULL DEFAULT '', `quoteId` INTEGER, `purpose` TEXT NOT NULL DEFAULT '', `manual` INTEGER NOT NULL DEFAULT 0)")
     }
 }
 
@@ -419,8 +458,8 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 }
 
 @Database(
-    entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class],
-    version = 13,
+    entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class],
+    version = 14,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -430,7 +469,7 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                 .build().also { instance = it }
         }
     }
