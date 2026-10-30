@@ -292,7 +292,7 @@ fun MoreScreen(nav: Nav) {
         MoreRow("01", "Price book", "What to charge · how to quote it") { nav.open(Page.PriceBook) }
         MoreRow("·", "Job map", "Upcoming jobs + directions") { nav.open(Page.JobMap) }
         MoreRow("02", "Customers", "Call, text, directions, new quote") { nav.open(Page.Customers) }
-        MoreRow("03", "Tools + calculators", "Box fill · conduit fill · wire size · load calc · voltage drop") { nav.open(Page.Tools) }
+        MoreRow("03", "Tools + calculators", "Box fill · conduit fill · EMT bends · wire size · load calc") { nav.open(Page.Tools) }
         MoreRow("04", "Settings", "Business info · rates · updates · v${Updater.currentVersion}") { nav.open(Page.Settings) }
     }
 }
@@ -420,7 +420,7 @@ fun ToolsScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         BackHeader("Tools", onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
-            val tools = listOf("Box fill", "Conduit fill", "Wire size", "Load calc", "Voltage drop")
+            val tools = listOf("Box fill", "Conduit fill", "EMT bends", "Wire size", "Load calc", "Voltage drop")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 tools.forEachIndexed { i, t ->
                     Box(Modifier.background(if (i == tool) Z.neon else Z.raised, cut(6.dp)).clickable { tool = i }.padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -432,10 +432,11 @@ fun ToolsScreen(onBack: () -> Unit) {
             when (tool) {
                 0 -> BoxFillTool()
                 1 -> ConduitFillTool()
-                2 -> WireSizeTool()
-                3 -> LoadCalcTool()
+                2 -> EmtBendTool()
+                3 -> WireSizeTool()
+                4 -> LoadCalcTool()
             }
-            if (tool == 4) {
+            if (tool == 5) {
             Segmented(listOf("Single phase", "Three phase"), threePhase) { threePhase = it }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

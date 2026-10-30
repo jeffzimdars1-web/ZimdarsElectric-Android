@@ -241,3 +241,103 @@ fun LoadCalcTool() {
     MoneyRow("Heating or cooling (larger)", "${qtyText(Math.round(r.heatCool).toDouble())} VA")
     Text("NEC 220.82 (2023). Planning number only. Your inspector or utility may want the standard method or room for future loads.", color = Z.muted, fontSize = 12.sp)
 }
+
+
+// ---------------- EMT bends ----------------
+
+@Composable
+fun EmtBendTool() {
+    var kind by remember { mutableIntStateOf(0) }
+    var size by remember { mutableStateOf("1/2") }
+    var angle by remember { mutableStateOf("30°") }
+    var a by remember { mutableStateOf("") }
+    var b by remember { mutableStateOf("") }
+    var c by remember { mutableStateOf("") }
+    val kinds = listOf("Stub 90", "Offset", "3-pt saddle", "4-pt saddle", "Rolling offset")
+    Pills(kinds, kinds[kind]) { kind = kinds.indexOf(it); a = ""; b = ""; c = "" }
+    Spacer(Modifier.height(8.dp))
+    val ang = com.zimdarselectric.app.data.Bends.angles.first { it.deg == angle }
+    fun ins(v: Double) = com.zimdarselectric.app.data.Bends.inches(v)
+    @Composable fun big(label: String, v: Double) {
+        Label(label, color = Z.ok)
+        Text(ins(v), fontFamily = Condensed, fontSize = 36.sp, color = Z.ok)
+    }
+    @Composable fun anglePick() {
+        Label("Bend angle"); Spacer(Modifier.height(6.dp))
+        Pills(com.zimdarselectric.app.data.Bends.angles.map { it.deg }, angle) { angle = it }
+        Spacer(Modifier.height(8.dp))
+    }
+    when (kind) {
+        0 -> {
+            Label("Pipe size"); Spacer(Modifier.height(6.dp))
+            Pills(com.zimdarselectric.app.data.Bends.takeUp.keys.map { "$it\"" }, "$size\"") { size = it.removeSuffix("\"") }
+            Spacer(Modifier.height(8.dp))
+            Field("Stub height (inches, to the back of the 90)", a, { a = it }, number = true)
+            if (a.toNum() > 0) {
+                Spacer(Modifier.height(10.dp))
+                big("Mark the pipe at", com.zimdarselectric.app.data.Bends.stub(a.toNum(), size).mark)
+                Text("Measured from the end. Take-up for $size\" is ${ins(com.zimdarselectric.app.data.Bends.takeUp.getValue(size))}. Put the mark at the bender's arrow, hook toward the end, bend to 90.", color = Z.text, fontSize = 14.sp)
+            }
+            Text("Back-to-back 90: measure the outside length you need, mark it, and line that mark up with the star (back of the bend) instead of the arrow.", color = Z.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+        }
+        1 -> {
+            anglePick()
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field("Offset depth (in)", a, { a = it }, Modifier.weight(1f), number = true)
+                Field("End to obstruction (in)", b, { b = it }, Modifier.weight(1f), number = true)
+            }
+            if (a.toNum() > 0) {
+                val o = com.zimdarselectric.app.data.Bends.offset(a.toNum(), ang, b.toNum())
+                Spacer(Modifier.height(10.dp))
+                if (b.toNum() > 0) big("First mark", o.firstMark)
+                big("Second mark, after the first", o.between)
+                Text("Multiplier ${qtyText(ang.multiplier)} for $angle. Shrink ${ins(o.shrink)} (already added to the first mark). Bend both to $angle, the second one flipped 180°.", color = Z.text, fontSize = 14.sp)
+            }
+        }
+        2 -> {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field("Saddle height (in)", a, { a = it }, Modifier.weight(1f), number = true)
+                Field("End to center of obstruction (in)", b, { b = it }, Modifier.weight(1f), number = true)
+            }
+            if (a.toNum() > 0 && b.toNum() > 0) {
+                val s = com.zimdarselectric.app.data.Bends.saddle3(a.toNum(), b.toNum())
+                Spacer(Modifier.height(10.dp))
+                big("Center mark (45°)", s.center)
+                big("Outside marks (22.5° each)", s.outer1)
+                Text("and ${ins(s.outer2)} from the end (2.5 × height each side of center). Shrink ${ins(s.shrink)} is included. Bend the center at the bender's notch/teardrop, outsides at the arrow.", color = Z.text, fontSize = 14.sp)
+            }
+        }
+        3 -> {
+            anglePick()
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field("Height (in)", a, { a = it }, Modifier.weight(1f), number = true)
+                Field("Obstruction width (in)", c, { c = it }, Modifier.weight(1f), number = true)
+            }
+            Field("End to near side of obstruction (in)", b, { b = it }, number = true)
+            if (a.toNum() > 0 && b.toNum() > 0) {
+                val s = com.zimdarselectric.app.data.Bends.saddle4(a.toNum(), c.toNum(), ang, b.toNum())
+                Spacer(Modifier.height(10.dp))
+                Label("Marks from the end", color = Z.ok)
+                s.marks.forEachIndexed { i, m -> MoneyRow("Mark ${i + 1}", ins(m), Z.ok, bold = true) }
+                Text("All four bends $angle. Marks 1–2 are the first offset (up), 3–4 the second (back down). Total shrink ${ins(s.shrink)}.", color = Z.text, fontSize = 14.sp)
+            }
+        }
+        else -> {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field("Rise (in)", a, { a = it }, Modifier.weight(1f), number = true)
+                Field("Roll (in)", b, { b = it }, Modifier.weight(1f), number = true)
+            }
+            anglePick()
+            if (a.toNum() > 0 && b.toNum() > 0) {
+                val t = com.zimdarselectric.app.data.Bends.rolling(a.toNum(), b.toNum())
+                val o = com.zimdarselectric.app.data.Bends.offset(t, ang, 0.0)
+                Spacer(Modifier.height(10.dp))
+                big("True offset", t)
+                big("Distance between marks", o.between)
+                Text("Bend it like a normal $angle offset of ${ins(t)}, then roll the pipe so it lines up with both the rise and the roll. Shrink ${ins(o.shrink)}.", color = Z.text, fontSize = 14.sp)
+            }
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    Text("Common hand-bender numbers (take-up 5\", 6\", 8\", 11\" for 1/2\"–1-1/4\"). Check the deduct stamped on your bender; makes vary a little.", color = Z.muted, fontSize = 12.sp)
+}
