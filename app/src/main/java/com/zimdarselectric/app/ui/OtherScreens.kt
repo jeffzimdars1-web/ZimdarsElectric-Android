@@ -523,6 +523,12 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 NumField("Minutes before start", s.remindMinutesBefore.toDouble(), "rmb", Modifier.weight(1f)) { save(s.copy(remindMinutesBefore = it.toInt().coerceAtLeast(0))) }
             }
             Text("19 = 7 PM. Set minutes to 0 to turn off the before-the-job reminder.", color = Z.muted, fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextFieldSaved("Your first name (in texts)", s.ownerName, "own", Modifier.weight(1f)) { save(s.copy(ownerName = it.trim())) }
+                NumField("Give or take (min)", s.arrivalWindow.toDouble(), "aw", Modifier.weight(1f)) { save(s.copy(arrivalWindow = it.toInt().coerceAtLeast(0))) }
+            }
+            Text("Customer reminder texts go out from your phone at the same times, when \"Text the customer reminders\" is on for that job.", color = Z.muted, fontSize = 12.sp)
 
             SectionHeader("08", "Customer signatures")
             Text("Paste the signing key Claude gave you. It lets this phone create signing links; keep it private.", color = Z.muted, fontSize = 13.sp)

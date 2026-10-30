@@ -221,6 +221,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onCreated(id)
     }
 
+    /** New appointment: a booked visit with no prices yet. Texts the customer reminders by default. */
+    fun newAppointment(startAt: Long?, onCreated: (Long) -> Unit) = newQuote { id ->
+        viewModelScope.launch {
+            dao.quote(id)?.let {
+                dao.updateQuote(it.copy(kind = com.zimdarselectric.app.data.Kind.APPT, textCustomer = true, title = "Service call",
+                    jobType = com.zimdarselectric.app.data.JobType.REPAIR,
+                    startAt = startAt, hasTime = false, scheduled = com.zimdarselectric.app.data.scheduleText(startAt, 0.0, false)))
+            }
+            onCreated(id)
+        }
+    }
+
+    /** After the visit: turn the appointment into a quote, keeping customer, address, date and notes. */
+    fun appointmentToQuote(q: Quote) = viewModelScope.launch {
+        dao.quote(q.id)?.let { dao.updateQuote(it.copy(kind = com.zimdarselectric.app.data.Kind.QUOTE, title = if (it.title == "Service call") "" else it.title, updatedAt = System.currentTimeMillis())) }
+    }
+
     /** New quote already scheduled on [startAt] (from the calendar). */
     fun newQuoteAt(startAt: Long, onCreated: (Long) -> Unit) = newQuote { id ->
         viewModelScope.launch {

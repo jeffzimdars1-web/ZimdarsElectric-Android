@@ -70,6 +70,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Loading…", color = Z.muted) }
         return
     }
+    if (q.kind == com.zimdarselectric.app.data.Kind.APPT) { AppointmentEditor(vm, q, onBack); return }
     val lines = allLines.filter { it.quoteId == q.id }
     val holdsOthers = holdsByMaterial(quotes, allLines, excludeQuoteId = q.id)
     val totals = computeTotals(q, lines, settings)
@@ -113,7 +114,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("Job site address", q.site, "site${q.id}") { save(q.copy(site = it)) }
             Spacer(Modifier.height(8.dp))
-            SchedulePicker(q) { save(it) }
+            SchedulePicker(q, customers.firstOrNull { it.id == q.customerId }, settings) { save(it) }
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("What you'll do (the customer sees this)", q.notes, "notes${q.id}", singleLine = false) { save(q.copy(notes = it)) }
 

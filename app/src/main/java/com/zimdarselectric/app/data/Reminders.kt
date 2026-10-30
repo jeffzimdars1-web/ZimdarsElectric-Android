@@ -108,7 +108,13 @@ class ReminderReceiver : BroadcastReceiver() {
                         val s = dao.settingsNow() ?: Settings()
                         val kind = intent.getIntExtra("kind", 0)
                         val due = Reminders.times(q, s).firstOrNull { it.first == kind }?.second
-                        if (due != null && kotlin.math.abs(due - System.currentTimeMillis()) < 6 * 3_600_000L) Reminders.show(context, q, kind)
+                        if (due != null && kotlin.math.abs(due - System.currentTimeMillis()) < 6 * 3_600_000L) {
+                            Reminders.show(context, q, kind)
+                            if (q.textCustomer) {
+                                val c = q.customerId?.let { dao.customer(it) }
+                                CustomerTexts.remind(context, q, c, s, nightBefore = kind == 0)
+                            }
+                        }
                     }
                 }
             } finally { pending.finish() }

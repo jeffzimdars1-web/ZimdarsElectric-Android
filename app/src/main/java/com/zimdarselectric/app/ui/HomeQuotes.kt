@@ -154,7 +154,10 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
         Spacer(Modifier.height(22.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Title("Quotes", 38)
-            Box(Modifier.width(110.dp)) { NeonButton("New", Modifier.fillMaxWidth()) { vm.newQuote { nav.open(Page.EditQuote(it)) } } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.width(92.dp)) { GhostButton("+ Appt", Modifier.fillMaxWidth().height(54.dp)) { vm.newAppointment(null) { nav.open(Page.EditQuote(it)) } } }
+                Box(Modifier.width(92.dp)) { NeonButton("+ Quote", Modifier.fillMaxWidth()) { vm.newQuote { nav.open(Page.EditQuote(it)) } } }
+            }
         }
         Spacer(Modifier.height(14.dp))
         val ui = vm.quotesUi
@@ -170,7 +173,9 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
                 val t = computeTotals(q, lines.filter { it.quoteId == q.id }, settings)
                 ListRow(q.title.ifBlank { "Untitled job" }, ("${q.number} · ${q.customerName.ifBlank { "No customer" }} · ${money(t.total)}" +
                     (q.startAt?.let { " · " + java.text.SimpleDateFormat(if (q.hasTime) "EEE MMM d, h:mm a" else "EEE MMM d", java.util.Locale.US).format(java.util.Date(it)) } ?: "")).uppercase(),
-                    onClick = { nav.open(Page.EditQuote(q.id)) }) { StatusDot(q.status, statusColor(q.status)) }
+                    onClick = { nav.open(Page.EditQuote(q.id)) }) {
+                    if (q.kind == com.zimdarselectric.app.data.Kind.APPT) StatusDot("Appt", Z.info) else StatusDot(q.status, statusColor(q.status))
+                }
             }
         }
     }

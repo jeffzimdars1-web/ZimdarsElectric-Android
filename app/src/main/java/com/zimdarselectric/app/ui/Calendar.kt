@@ -66,7 +66,7 @@ private val shortTime = DateTimeFormatter.ofPattern("h:mma", Locale.US)
 /** Date + start time + hours on site, on the quote. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
+fun SchedulePicker(q: Quote, customer: com.zimdarselectric.app.data.Customer? = null, settings: Settings? = null, onSave: (Quote) -> Unit) {
     val context = LocalContext.current
     val askNotify = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
     var pickDate by remember { mutableStateOf(false) }
@@ -102,6 +102,29 @@ fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
             }
         }
         if (q.hoursOnSite == 0.0 && q.laborHours > 0) Text("Using the ${qtyText(q.laborHours)} labor hours until you set this.", color = Z.muted, fontSize = 12.sp)
+        // Text the customer reminders from this phone
+        val askSms = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth().clickable {
+            val on = !q.textCustomer
+            onSave(q.copy(textCustomer = on))
+            if (on && !com.zimdarselectric.app.data.CustomerTexts.canSend(context)) askSms.launch(android.Manifest.permission.SEND_SMS)
+        }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(24.dp).border(1.5.dp, if (q.textCustomer) Z.neon else Z.lineStrong).background(if (q.textCustomer) Z.neon else Z.raised), contentAlignment = Alignment.Center) {
+                if (q.textCustomer) Text("✓", color = Z.onNeon, fontSize = 15.sp)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Text the customer reminders", color = Z.text, fontSize = 16.sp)
+                Label(if (q.hasTime) "Evening before + 1 hr before · from your phone" else "Evening before · from your phone")
+            }
+        }
+        if (q.textCustomer) {
+            if (customer?.phone.isNullOrBlank()) Text("Add the customer's cell number (Customers) so the texts can go out.", color = Z.warn, fontSize = 13.sp)
+            else if (settings != null) {
+                Text("They'll get: \"" + com.zimdarselectric.app.data.CustomerTexts.message(q, customer, settings, nightBefore = true) + "\"", color = Z.muted, fontSize = 12.sp)
+            }
+        }
     }
 
     if (pickDate) {
@@ -142,6 +165,9 @@ fun SchedulePicker(q: Quote, onSave: (Quote) -> Unit) {
 }
 
 private fun statusColorFor(s: String) = statusColor(s)
+private fun Quote.isAppt() = kind == com.zimdarselectric.app.data.Kind.APPT
+private fun Quote.dotColor() = if (isAppt()) Z.info else statusColor(status)
+private fun Quote.badge() = if (isAppt()) "APPOINTMENT" else status
 
 /** Month grid with jobs marked on their days, plus the chosen day's jobs underneath. */
 fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>, lines: List<QuoteLine>, settings: Settings) {
@@ -154,8 +180,10 @@ fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>,
         val title = ui.day.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US))
         SectionHeader("", title, (byDay[ui.day]?.size ?: 0).let { if (it == 0) null else "$it job${if (it == 1) "" else "s"}" })
         if (byDay[ui.day].isNullOrEmpty()) Text("Nothing scheduled this day.", color = Z.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 10.dp))
-        GhostButton("+ New job on ${ui.day.format(DateTimeFormatter.ofPattern("EEE MMM d", Locale.US))}", Modifier.fillMaxWidth()) {
-            vm.newQuoteAt(ui.day.atTime(8, 0).atZone(zone).toInstant().toEpochMilli()) { nav.open(Page.EditQuote(it)) }
+        val dayMillis = ui.day.atStartOfDay(zone).toInstant().toEpochMilli()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NeonButton("+ Appointment", Modifier.weight(1f)) { vm.newAppointment(dayMillis) { nav.open(Page.EditQuote(it)) } }
+            GhostButton("+ Quote", Modifier.weight(1f).height(54.dp)) { vm.newQuoteAt(dayMillis) { nav.open(Page.EditQuote(it)) } }
         }
         Spacer(Modifier.height(6.dp))
     }
@@ -169,14 +197,14 @@ fun LazyListScope.calendarItems(vm: AppViewModel, nav: Nav, quotes: List<Quote>,
                 if (q.hasTime && q.blockHours > 0) Label("to ${end.format(timeFmt)}")
                 else if (q.blockHours > 0) Label("about ${qtyText(q.blockHours)} hr")
             }
-            Box(Modifier.width(3.dp).height(54.dp).background(statusColorFor(q.status)))
+            Box(Modifier.width(3.dp).height(54.dp).background(q.dotColor()))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(q.title.ifBlank { "Untitled job" }, color = Z.text, fontSize = 16.sp)
-                Label("${q.number} · ${q.customerName.ifBlank { "No customer" }} · ${money(t.total)}")
+                Label("${q.number} · ${q.customerName.ifBlank { "No customer" }}" + if (q.isAppt()) "" else " · ${money(t.total)}")
                 if (q.site.isNotBlank()) Text(q.site, color = Z.muted, fontSize = 13.sp)
                 Spacer(Modifier.height(4.dp))
-                StatusDot(q.status, statusColorFor(q.status))
+                StatusDot(q.badge(), q.dotColor())
             }
         }
         Divider()
@@ -225,9 +253,9 @@ private fun CalendarMonth(month: YearMonth, selected: LocalDate, byDay: Map<Loca
                         Text("$n", color = if (day == today) Z.neon else Z.text, fontSize = 12.sp, fontFamily = Condensed)
                         jobs.take(2).forEach { q ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(5.dp).background(statusColor(q.status)))
+                                Box(Modifier.size(5.dp).background(q.dotColor()))
                                 Spacer(Modifier.width(2.dp))
-                                Text(if (!q.hasTime) "job" else q.startAt!!.toLocal().format(shortTime).lowercase().replace(":00", "").removeSuffix("m"),
+                                Text(if (!q.hasTime) (if (q.isAppt()) "appt" else "job") else q.startAt!!.toLocal().format(shortTime).lowercase().replace(":00", "").removeSuffix("m"),
                                     color = Z.text, fontSize = 9.sp, maxLines = 1)
                             }
                         }
