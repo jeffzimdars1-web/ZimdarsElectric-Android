@@ -70,8 +70,7 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
             }
             Divider()
             Spacer(Modifier.height(8.dp))
-            AddressField("Address", q.site, "asite${q.id}", onValue = { save(q.copy(site = it, siteLat = null, siteLon = null)) },
-                onPlace = { p -> save(q.copy(site = p.label, siteLat = p.lat, siteLon = p.lon)) })
+            SiteAddress(vm, q, customer, "Address") { save(it) }
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("What it's for (e.g. Service call)", q.title, "atitle${q.id}") { save(q.copy(title = it)) }
             Spacer(Modifier.height(8.dp))

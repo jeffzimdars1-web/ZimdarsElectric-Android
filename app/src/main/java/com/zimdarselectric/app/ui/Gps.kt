@@ -78,6 +78,28 @@ fun AddressField(label: String, value: String, key: Any, modifier: Modifier = Mo
     }
 }
 
+/**
+ * The job's address. Offers the customer's saved address in one tap, suggests addresses as you type,
+ * and when you pick one for a customer with no address on file, saves it to them for next time.
+ */
+@Composable
+fun SiteAddress(vm: AppViewModel, q: com.zimdarselectric.app.data.Quote, customer: com.zimdarselectric.app.data.Customer?, label: String, save: (com.zimdarselectric.app.data.Quote) -> Unit) {
+    var fillKey by remember { mutableStateOf(0) }
+    AddressField(label, q.site, "site${q.id}-$fillKey", onValue = { save(q.copy(site = it, siteLat = null, siteLon = null)) },
+        onPlace = { p ->
+            save(q.copy(site = p.label, siteLat = p.lat, siteLon = p.lon))
+            if (customer != null && customer.address.isBlank()) vm.saveCustomer(customer.copy(address = p.label))
+        })
+    val saved = customer?.address.orEmpty()
+    if (q.site.isBlank() && saved.isNotBlank()) {
+        Label("Use ${customer!!.name.substringBefore(' ')}'s address: $saved →", color = Z.neon,
+            modifier = Modifier.clickable { save(q.copy(site = saved, siteLat = null, siteLon = null)); fillKey++ }.padding(vertical = 10.dp))
+    } else if (q.site.isBlank() && customer != null) {
+        Text("No address saved for ${customer.name.substringBefore(' ')} yet. Type it here (pick a suggestion) and it's saved to them for next time.",
+            color = Z.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
 /** On my way → (GPS) arrived, job clock → leave job → drive home. */
 @Composable
 fun DriveSection(vm: AppViewModel, q: Quote) {

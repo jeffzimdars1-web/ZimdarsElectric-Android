@@ -117,8 +117,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             }
             Divider()
             Spacer(Modifier.height(8.dp))
-            AddressField("Job site address", q.site, "site${q.id}", onValue = { save(q.copy(site = it, siteLat = null, siteLon = null)) },
-                onPlace = { p -> save(q.copy(site = p.label, siteLat = p.lat, siteLon = p.lon)) })
+            SiteAddress(vm, q, customers.firstOrNull { it.id == q.customerId }, "Job site address") { save(it) }
             Spacer(Modifier.height(8.dp))
             SchedulePicker(q, customers.firstOrNull { it.id == q.customerId }, settings) { save(it) }
             DriveSection(vm, q)
