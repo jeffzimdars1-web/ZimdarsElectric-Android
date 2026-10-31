@@ -79,8 +79,36 @@ class TodayWidget : AppWidgetProvider() {
             }
             val next = list.firstOrNull()
             val rest = list.drop(1).filter { sameDay(it.startAt!!, next?.startAt ?: now) }.take(3)
+            // Weather: at the next job (for the time you'll be there, within the next 5 days), otherwise at your office now.
+            val settings = dao.settingsNow()
+            val weatherLine = runCatching {
+                val soon = next?.takeIf { (it.startAt ?: 0) - now < 5 * 86_400_000L }
+                var lat = soon?.siteLat; var lon = soon?.siteLon
+                if (soon != null && (lat == null || lon == null) && soon.site.isNotBlank()) {
+                    com.zimdarselectric.app.data.Geo.locate(soon.site)?.let { lat = it.lat; lon = it.lon; dao.updateQuote(soon.copy(siteLat = it.lat, siteLon = it.lon)) }
+                }
+                if (lat != null && lon != null) {
+                    val at = maxOf(now, soon!!.startAt!!.let { if (soon.hasTime) it else it + 10 * 3_600_000L })
+                    com.zimdarselectric.app.data.Weather.at(context, lat!!, lon!!, at)?.let { h ->
+                        h.line + "  ·  at the job" + if (sameDay(at, now)) "" else " " + whenLabel(soon).substringBefore(" ·")
+                    }
+                } else {
+                    val prefs = context.getSharedPreferences("weather", Context.MODE_PRIVATE)
+                    val addr = settings?.address.orEmpty()
+                    var oLat = prefs.getFloat("office_lat", 0f).toDouble(); var oLon = prefs.getFloat("office_lon", 0f).toDouble()
+                    if ((oLat == 0.0 || prefs.getString("office_addr", "") != addr) && addr.isNotBlank()) {
+                        com.zimdarselectric.app.data.Geo.locate(addr)?.let { p ->
+                            oLat = p.lat; oLon = p.lon
+                            prefs.edit().putFloat("office_lat", p.lat.toFloat()).putFloat("office_lon", p.lon.toFloat()).putString("office_addr", addr).apply()
+                        }
+                    }
+                    if (oLat != 0.0) com.zimdarselectric.app.data.Weather.at(context, oLat, oLon)?.let { it.line + "  ·  now" } else null
+                }
+            }.getOrNull()
             for (id in ids) {
                 val v = RemoteViews(context.packageName, R.layout.widget_today)
+                v.setTextViewText(R.id.w_weather, weatherLine ?: "")
+                v.setViewVisibility(R.id.w_weather, if (weatherLine == null) View.GONE else View.VISIBLE)
                 v.setTextViewText(R.id.w_date, dayName.format(Date(now)).uppercase())
                 v.setOnClickPendingIntent(R.id.w_root, open(context, 10))
                 v.setOnClickPendingIntent(R.id.w_new_quote, open(context, 11, action = ACTION_NEW_QUOTE))

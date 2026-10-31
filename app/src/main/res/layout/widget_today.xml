@@ -14,6 +14,9 @@
             android:text="" android:textColor="#FFA7ADB2" android:textSize="11sp" android:fontFamily="monospace" />
     </LinearLayout>
 
+    <TextView android:id="@+id/w_weather" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+        android:text="" android:textColor="#FFF2F3F3" android:textSize="13sp" android:maxLines="2" android:ellipsize="end" />
+
     <TextView android:id="@+id/w_next_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
         android:text="NEXT" android:textColor="#FF8EC5FF" android:textSize="11sp" android:fontFamily="monospace" android:letterSpacing="0.1" />
     <TextView android:id="@+id/w_next_title" android:layout_width="match_parent" android:layout_height="wrap_content"
