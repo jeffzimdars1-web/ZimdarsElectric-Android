@@ -49,7 +49,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         combine(dao.quotes(), dao.allLines()) { q, l -> holdsByMaterial(q, l) }, emptyMap()
     )
 
+    /** Set by the widget's On my way button: the job screen starts On my way for this job. */
+    var autoOnMyWay by androidx.compose.runtime.mutableStateOf<Long?>(null)
+
     init {
+        // Keep the home screen widget current whenever jobs change.
+        viewModelScope.launch {
+            dao.quotes().collect { kotlinx.coroutines.delay(300); runCatching { TodayWidget.updateAll(app) } }
+        }
         viewModelScope.launch { if (dao.settingsNow() == null) dao.saveSettings(Settings()) }
         // While the app is open, check for customer signatures every 20 seconds (only if a quote is waiting).
         viewModelScope.launch {

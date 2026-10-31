@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Zimdars Electric</string>
+    <string name="widget_desc">Your next job with On my way and Navigate, plus the rest of today.</string>
 </resources>

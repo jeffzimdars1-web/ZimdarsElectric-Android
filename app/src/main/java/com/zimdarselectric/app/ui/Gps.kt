@@ -129,6 +129,13 @@ fun DriveSection(vm: AppViewModel, q: Quote) {
         if (need.isEmpty() || Geo.canLocate(context)) action() else { pending = action; askLocation.launch(need.toTypedArray()) }
     }
     val mine = drive?.takeIf { it.quoteId == q.id }
+    // Widget "On my way": start it as if the button were tapped (asks for location first if needed).
+    androidx.compose.runtime.LaunchedEffect(vm.autoOnMyWay) {
+        if (vm.autoOnMyWay == q.id) {
+            vm.autoOnMyWay = null
+            if (!busy && drive == null) withLocation { busy = true; vm.onMyWay(q) { busy = false; status = it } }
+        }
+    }
 
     Spacer(Modifier.height(12.dp))
     when {

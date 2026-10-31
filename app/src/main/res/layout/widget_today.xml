@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@drawable/widget_bg">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <TextView android:id="@+id/w_brand" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:text="ZIMDARS ELECTRIC" android:textColor="#FFDCFF34" android:textSize="11sp" android:fontFamily="monospace" android:letterSpacing="0.12" />
+        <TextView android:id="@+id/w_date" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="" android:textColor="#FFA7ADB2" android:textSize="11sp" android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/w_next_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+        android:text="NEXT" android:textColor="#FF8EC5FF" android:textSize="11sp" android:fontFamily="monospace" android:letterSpacing="0.1" />
+    <TextView android:id="@+id/w_next_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Nothing scheduled" android:textColor="#FFF2F3F3" android:textSize="19sp" android:textStyle="bold"
+        android:fontFamily="sans-serif-condensed" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/w_next_sub" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="" android:textColor="#FFA7ADB2" android:textSize="13sp" android:maxLines="2" android:ellipsize="end" />
+
+    <LinearLayout android:id="@+id/w_next_buttons" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:layout_marginTop="8dp">
+        <TextView android:id="@+id/w_onmyway" android:layout_width="0dp" android:layout_weight="1" android:layout_height="40dp"
+            android:gravity="center" android:text="ON MY WAY" android:textColor="#FF15190A" android:textStyle="bold" android:textSize="13sp"
+            android:fontFamily="sans-serif-condensed" android:background="@drawable/widget_btn_neon" />
+        <TextView android:id="@+id/w_nav" android:layout_width="0dp" android:layout_weight="1" android:layout_height="40dp" android:layout_marginStart="8dp"
+            android:gravity="center" android:text="NAVIGATE" android:textColor="#FFF2F3F3" android:textStyle="bold" android:textSize="13sp"
+            android:fontFamily="sans-serif-condensed" android:background="@drawable/widget_btn_line" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/w_later" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginTop="10dp" android:text="" android:textColor="#FFF2F3F3" android:textSize="13sp" android:lineSpacingExtra="3dp" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
+        <TextView android:id="@+id/w_new_quote" android:layout_width="0dp" android:layout_weight="1" android:layout_height="36dp"
+            android:gravity="center" android:text="+ QUOTE" android:textColor="#FFDCFF34" android:textStyle="bold" android:textSize="12sp"
+            android:fontFamily="monospace" android:background="@drawable/widget_btn_line" />
+        <TextView android:id="@+id/w_new_appt" android:layout_width="0dp" android:layout_weight="1" android:layout_height="36dp" android:layout_marginStart="8dp"
+            android:gravity="center" android:text="+ APPT" android:textColor="#FFDCFF34" android:textStyle="bold" android:textSize="12sp"
+            android:fontFamily="monospace" android:background="@drawable/widget_btn_line" />
+    </LinearLayout>
+</LinearLayout>

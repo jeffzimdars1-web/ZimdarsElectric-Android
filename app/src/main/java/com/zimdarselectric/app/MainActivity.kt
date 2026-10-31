@@ -48,17 +48,22 @@ import com.zimdarselectric.app.ui.ZTheme
 class MainActivity : ComponentActivity() {
     /** A quote to open, from tapping a job reminder. */
     private val openQuote = mutableStateOf<Long?>(null)
+    /** A home screen widget button (On my way, + Quote, + Appt). */
+    private val widgetAction = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         openQuote.value = intent?.getLongExtra(com.zimdarselectric.app.data.Reminders.EXTRA_QUOTE, -1)?.takeIf { it > 0 }
-        setContent { ZTheme { App(openQuote = openQuote.value, onOpened = { openQuote.value = null }) } }
+        widgetAction.value = intent?.getStringExtra(TodayWidget.EXTRA_ACTION)
+        setContent { ZTheme { App(openQuote = openQuote.value, onOpened = { openQuote.value = null },
+            widgetAction = widgetAction.value, onWidgetHandled = { widgetAction.value = null }) } }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         intent.getLongExtra(com.zimdarselectric.app.data.Reminders.EXTRA_QUOTE, -1).takeIf { it > 0 }?.let { openQuote.value = it }
+        intent.getStringExtra(TodayWidget.EXTRA_ACTION)?.let { widgetAction.value = it }
     }
 }
 
@@ -85,11 +90,17 @@ class Nav {
 }
 
 @Composable
-fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () -> Unit = {}) {
+fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () -> Unit = {},
+        widgetAction: String? = null, onWidgetHandled: () -> Unit = {}) {
     val nav = remember { Nav() }
     // Look for new phone contacts once, when the app starts up.
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshNewContacts(); vm.pullInbox() }
-    androidx.compose.runtime.LaunchedEffect(openQuote) {
+    androidx.compose.runtime.LaunchedEffect(openQuote, widgetAction) {
+        when (widgetAction) {
+            TodayWidget.ACTION_NEW_QUOTE -> { nav.goTab(Tab.QUOTES); vm.newQuote { nav.open(Page.EditQuote(it)) }; onWidgetHandled() }
+            TodayWidget.ACTION_NEW_APPT -> { nav.goTab(Tab.QUOTES); vm.newAppointment(null) { nav.open(Page.EditQuote(it)) }; onWidgetHandled() }
+            TodayWidget.ACTION_ON_MY_WAY -> { if (openQuote != null) vm.autoOnMyWay = openQuote; onWidgetHandled() }
+        }
         if (openQuote != null) { nav.goTab(Tab.QUOTES); nav.open(Page.EditQuote(openQuote)); onOpened() }
     }
     BackHandler(enabled = nav.stack.isNotEmpty() || nav.tab != Tab.HOME) {
