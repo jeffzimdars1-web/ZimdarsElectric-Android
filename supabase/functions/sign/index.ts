@@ -1,4 +1,4 @@
-// Zimdars Electric customer pages: quote signing (+ ST-124, add-ons), appointment confirmations, ST-124 only, invoices, customer pages.
+// Zimdars Electric customer pages: quote signing (+ ST-124, add-ons, options), appointment confirmations, ST-124 only, invoices, customer pages.
 // Public: GET ?t=TOKEN, GET ?t=TOKEN&ics=1, POST {action:'sign'} (quote / st124), POST {action:'confirm'|'reschedule'} (appointment).
 // App only (x-app-key): POST {action:'create'|'status'|'cancel'|'paid'|'retime'|'update'}.
 import { createClient } from "npm:@supabase/supabase-js@2";
