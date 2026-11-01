@@ -304,7 +304,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var lastProfile = ""
     private suspend fun pushProfile(s: Settings) {
         val p = org.json.JSONObject().put("name", s.businessName).put("phone", s.phone).put("owner", s.ownerName)
-            .put("area", "Licensed electrician · Mohawk Valley")
+            .put("area", "Electrical work · Mohawk Valley")
         if (p.toString() == lastProfile) return
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val c = (java.net.URL("https://dmaslbfwpsfnnnyushbc.supabase.co/functions/v1/book").openConnection() as java.net.HttpURLConnection).apply {
