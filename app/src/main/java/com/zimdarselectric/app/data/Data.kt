@@ -57,6 +57,8 @@ data class Customer(
     /** Their customer page (all their quotes, visits, invoices). */
     @ColumnInfo(defaultValue = "") val portalToken: String = "",
     @ColumnInfo(defaultValue = "") val portalUrl: String = "",
+    /** How they found you: Google, Facebook, Referral, Booking page… */
+    @ColumnInfo(defaultValue = "") val source: String = "",
 ) {
     data class Property(val label: String, val address: String)
 
@@ -190,6 +192,15 @@ data class Quote(
     val lastFollowUpAt: Long? = null,
     /** Job checklists as JSON: [{title, items:[{t, done}]}]. */
     @ColumnInfo(defaultValue = "") val checklist: String = "",
+    /** Deposit asked for when they sign, as % of the total (0 = none). */
+    @ColumnInfo(defaultValue = "0") val depositPct: Double = 0.0,
+    @ColumnInfo(defaultValue = "0") val depositPaid: Double = 0.0,
+    val depositPaidAt: Long? = null,
+    /** Good / Better / Best: this quote is another option of the quote with this id. */
+    val optionOf: Long? = null,
+    @ColumnInfo(defaultValue = "") val optionLabel: String = "",
+    /** Repeat-work reminders as JSON: [{what, due(ms), sent(ms|null)}]. */
+    @ColumnInfo(defaultValue = "") val remindLater: String = "",
 ) {
     /** A new-time request that came in after the last confirmation was sent and hasn't been handled. */
     val hasRescheduleRequest: Boolean get() = rescheduleRequestedAt != null && rescheduleText.isNotBlank() && rescheduleRequestedAt > (sentAt ?: 0L)
@@ -344,6 +355,10 @@ data class Settings(
     /** Customer financing application link, shown on quotes at or above [financingMin]. */
     @ColumnInfo(defaultValue = "") val financingLink: String = "",
     @ColumnInfo(defaultValue = "1000") val financingMin: Double = 1000.0,
+    /** Deposit % asked on new quotes (0 = none). */
+    @ColumnInfo(defaultValue = "0") val depositPct: Double = 0.0,
+    /** Text customers when repeat work comes due (generator service, detectors…). */
+    @ColumnInfo(defaultValue = "1") val remindersOn: Boolean = true,
 )
 
 /** A photo taken on a job (before / after / problem found). */
@@ -537,6 +552,23 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/** Version 24: lead source, deposits, Good/Better/Best options, repeat-work reminders. */
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf(
+            "ALTER TABLE `Customer` ADD COLUMN `source` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Quote` ADD COLUMN `depositPct` REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE `Quote` ADD COLUMN `depositPaid` REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE `Quote` ADD COLUMN `depositPaidAt` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `optionOf` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `optionLabel` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Quote` ADD COLUMN `remindLater` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `depositPct` REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE `Settings` ADD COLUMN `remindersOn` INTEGER NOT NULL DEFAULT 1",
+        ).forEach { db.execSQL(it) }
+    }
+}
+
 /** Version 23: add-ons, quote follow-ups, checklists, missed-call text-back, payment links, customer pages. */
 val MIGRATION_22_23 = object : Migration(22, 23) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -713,7 +745,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class, JobPhoto::class],
-    version = 23,
+    version = 24,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -725,7 +757,7 @@ abstract class AppDb : RoomDatabase() {
         fun close() = synchronized(this) { instance?.close(); instance = null }
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
                 .build().also { instance = it }
         }
     }

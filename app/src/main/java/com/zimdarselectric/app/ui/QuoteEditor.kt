@@ -101,6 +101,17 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
         }
         Divider()
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
+            val mainQ = q.optionOf?.let { id -> quotes.firstOrNull { it.id == id } }
+            if (q.optionOf != null) {
+                Spacer(Modifier.height(12.dp))
+                Column(Modifier.fillMaxWidth().background(Z.raised).padding(14.dp)) {
+                    Label("${q.optionLabel.ifBlank { "Option" }} option of ${mainQ?.number ?: "a quote"}", color = Z.neon)
+                    Text("Change what's different in this option. You send all the options together from the main quote, and the customer picks one.", color = Z.muted, fontSize = 13.sp)
+                    if (mainQ != null) Label("Back to the main quote →", color = Z.info, modifier = Modifier.clickable { onOpenQuote(mainQ.id) }.padding(top = 8.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                TextFieldSaved("Option name (Good, Better, Best…)", q.optionLabel, "olabel${q.id}") { save(q.copy(optionLabel = it.take(24))) }
+            }
             SectionHeader("01", "Job")
             if (lines.isEmpty() && q.laborHours == 0.0 && q.status == Status.DRAFT) {
                 Label("Just a visit to look first? Make it an appointment →", color = Z.info, modifier = Modifier.clickable {
@@ -248,7 +259,19 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
                 }
             }
 
+            if (q.optionOf != null) {
+                Spacer(Modifier.height(16.dp))
+                GhostButton("Delete this option", Modifier.fillMaxWidth(), color = Z.warn) { confirmDelete = true }
+                Spacer(Modifier.height(40.dp))
+            } else {
+            if (q.parentId == null) {
+                SectionHeader("05", "Good / Better / Best")
+                OptionsSection(vm, q, quotes, allLines, settings, onOpenQuote)
+            }
+
             SectionHeader("06", "Customer signature")
+            DepositRow(vm, q, totals.total) { save(it) }
+            Spacer(Modifier.height(12.dp))
             SignatureSection(vm, q, customers.firstOrNull { it.id == q.customerId }, settings)
             St124Section(vm, q, settings)
             Spacer(Modifier.height(12.dp))
@@ -259,6 +282,9 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
 
             SectionHeader("07", "Checklists")
             ChecklistSection(q, locked = false) { save(q.copy(checklist = it)) }
+
+            SectionHeader("07", "Remind them later")
+            RemindLaterSection(q, settings.remindersOn) { save(q.copy(remindLater = it)) }
 
             SectionHeader("08", if (q.parentId != null) "Change order" else "Change orders")
             ChangeOrdersSection(vm, q, quotes, allLines, settings, onOpenQuote)
@@ -295,6 +321,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             Spacer(Modifier.height(10.dp))
             GhostButton("Delete quote", Modifier.fillMaxWidth(), color = Z.warn) { confirmDelete = true }
             Spacer(Modifier.height(40.dp))
+            }
         }
     }
 

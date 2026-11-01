@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -187,7 +189,7 @@ fun InvoiceSection(vm: AppViewModel, q: Quote, quotes: List<Quote>, lines: List<
     val context = LocalContext.current
     val kids = quotes.filter { it.parentId == q.id }
     val total = Billing.invoiceTotal(q, kids, lines, settings)
-    val due = maxOf(0.0, total - q.paidAmount)
+    val due = maxOf(0.0, total - Billing.paidSoFar(q))
     var busy by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
     val changes = Billing.billableChanges(kids)
@@ -273,4 +275,111 @@ fun ChecklistSection(q: Quote, locked: Boolean, onChange: (String) -> Unit) {
             confirm = "Remove" to { onChange(com.zimdarselectric.app.data.Checklists.remove(q.checklist, i)); removing = null },
             dismiss = "Keep" to { removing = null }) {}
     }
+}
+
+// ---------------- Repeat-work reminders ----------------
+
+@Composable
+fun RemindLaterSection(q: Quote, settingsOn: Boolean, onChange: (String) -> Unit) {
+    val items = remember(q.remindLater) { com.zimdarselectric.app.data.RepeatWork.parse(q.remindLater) }
+    var adding by remember { mutableStateOf(false) }
+    val fmt = remember { SimpleDateFormat("MMM d, yyyy", Locale.US) }
+    Text("Set a reminder and the customer gets a text when it's due, with a link to book you. Good for generator service, detector checks, surge protectors.",
+        color = Z.muted, fontSize = 13.sp)
+    if (!settingsOn) Text("Reminders are turned off in Settings.", color = Z.warn, fontSize = 13.sp)
+    items.forEachIndexed { i, it ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(it.what, color = Z.text, fontSize = 16.sp)
+                Label(if (it.sent != null) "Texted ${fmt.format(Date(it.sent))}" else "Texts them ${fmt.format(Date(it.due))}", color = if (it.sent != null) Z.ok else Z.info)
+            }
+            Label("Remove", color = Z.warn, modifier = Modifier.clickable { onChange(com.zimdarselectric.app.data.RepeatWork.write(items.filterIndexed { j, _ -> j != i })) }.padding(8.dp))
+        }
+        Divider()
+    }
+    Spacer(Modifier.height(10.dp))
+    GhostButton("+ Remind them later", Modifier.fillMaxWidth()) { adding = true }
+    if (adding) {
+        var pick by remember { mutableStateOf(0) }
+        var custom by remember { mutableStateOf("") }
+        var months by remember { mutableStateOf(com.zimdarselectric.app.data.RepeatWork.presets[0].months.toString()) }
+        val presets = com.zimdarselectric.app.data.RepeatWork.presets
+        ZDialog("Remind them later", { adding = false }, confirm = "Add" to {
+            val m = months.toIntOrNull()?.coerceIn(1, 240) ?: 12
+            val p = presets.getOrNull(pick)
+            val what = if (p != null) p.what else custom.trim()
+            if (what.isNotBlank()) {
+                val due = com.zimdarselectric.app.data.RepeatWork.dueIn(m, q.completedAt ?: System.currentTimeMillis())
+                onChange(com.zimdarselectric.app.data.RepeatWork.write(items + com.zimdarselectric.app.data.RepeatWork.Item(what, due, null, p?.why ?: "")))
+            }
+            adding = false
+        }, dismiss = "Cancel" to { adding = false }) {
+            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                (presets.map { it.what } + "Something else").forEachIndexed { i, label ->
+                    val on = i == pick
+                    Text(label, color = if (on) Z.neon else Z.text, fontSize = 15.sp,
+                        modifier = Modifier.fillMaxWidth().clickable { pick = i; presets.getOrNull(i)?.let { months = it.months.toString() } }.padding(vertical = 10.dp))
+                }
+                if (pick >= presets.size) { Field("What's due", custom, { custom = it }); Spacer(Modifier.height(8.dp)) }
+                Field("Text them in (months, from when the job is done)", months, { months = it }, number = true)
+            }
+        }
+    }
+}
+
+// ---------------- Good / Better / Best ----------------
+
+@Composable
+fun OptionsSection(vm: AppViewModel, q: Quote, quotes: List<Quote>, allLines: List<QuoteLine>, s: Settings, onOpenQuote: (Long) -> Unit) {
+    val options = quotes.filter { it.optionOf == q.id }.sortedBy { it.id }
+    if (options.isEmpty()) {
+        Text("Give the customer 2 or 3 choices, like a basic repair, a better fix, and the full upgrade. They pick one on the signing page. Most people pick the middle one.",
+            color = Z.muted, fontSize = 13.sp)
+        Spacer(Modifier.height(10.dp))
+        if (q.signedAt == null) GhostButton("+ Add a second option", Modifier.fillMaxWidth()) { vm.addOption(q) { onOpenQuote(it) } }
+        return
+    }
+    val all = listOf(q) + options
+    if (q.signedAt != null) Text("They picked ${q.optionLabel.ifBlank { "this option" }}. This quote now has that option's work and price; the others are kept for your records.",
+        color = Z.ok, fontSize = 13.sp)
+    else Text("The customer sees these side by side and picks one. Tap one to change it.", color = Z.muted, fontSize = 13.sp)
+    all.forEachIndexed { i, o ->
+        val total = computeTotals(o, allLines.filter { it.quoteId == o.id }, s).total
+        Row(Modifier.fillMaxWidth().clickable(enabled = o.id != q.id) { onOpenQuote(o.id) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Label(o.optionLabel.ifBlank { "Option ${i + 1}" } + if (o.id == q.id) " · this quote" else "", color = if (o.id == q.id) Z.neon else Z.info)
+                Text(o.title.ifBlank { "No job name yet" }, color = Z.text, fontSize = 16.sp)
+            }
+            Text(money(total), fontFamily = Mono, color = Z.text)
+        }
+        Divider()
+    }
+    if (q.signedAt == null) {
+        if (q.optionLabel.isBlank()) { Spacer(Modifier.height(8.dp)); TextFieldSaved("This quote's option name", q.optionLabel, "mlabel${q.id}") { vm.saveQuote(q.copy(optionLabel = it.take(24))) } }
+        if (options.size < 2) { Spacer(Modifier.height(10.dp)); GhostButton("+ Add a third option", Modifier.fillMaxWidth()) { vm.addOption(q) { onOpenQuote(it) } } }
+        Spacer(Modifier.height(6.dp))
+        Text("Send for signature below sends all of them together.", color = Z.muted, fontSize = 12.sp)
+    }
+}
+
+// ---------------- Deposit ----------------
+
+@Composable
+fun DepositRow(vm: AppViewModel, q: Quote, total: Double, save: (Quote) -> Unit) {
+    NumField("Deposit when they sign (% of total, 0 = none)", q.depositPct, "dep${q.id}") { save(q.copy(depositPct = it.coerceIn(0.0, 100.0))) }
+    if (q.depositPct <= 0) return
+    val amount = Math.round(total * q.depositPct) / 100.0
+    Spacer(Modifier.height(6.dp))
+    if (q.depositPaidAt != null) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Deposit received ${money(q.depositPaid)} · ${SimpleDateFormat("MMM d", Locale.US).format(Date(q.depositPaidAt))}", color = Z.ok, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Label("Undo", color = Z.warn, modifier = Modifier.clickable { vm.undoDeposit(q) }.padding(8.dp))
+        }
+    } else {
+        Text("Deposit: ${money(amount)}. The signing page shows it and gives them your Venmo / Zelle / card buttons after they sign.", color = Z.info, fontSize = 13.sp)
+        if (q.signedAt != null) { Spacer(Modifier.height(6.dp)); GhostButton("Got the deposit · ${money(amount)}", Modifier.fillMaxWidth(), color = Z.ok) { vm.markDepositPaid(q, amount) } }
+    }
+    Spacer(Modifier.height(4.dp))
+    Text("NY law: deposit money for home improvement work has to go in a separate escrow account (or be covered by a bond) within 5 business days, until the work is done.",
+        color = Z.muted, fontSize = 12.sp)
 }

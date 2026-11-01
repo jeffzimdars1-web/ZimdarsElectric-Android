@@ -61,6 +61,16 @@
   .addon { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
   .addon input { width: 24px; height: 24px; flex: none; accent-color: var(--ink); margin-top: 1px; }
   .addon .nm { flex: 1; } .addon .pr { font-weight: 700; white-space: nowrap; }
+  .opts { display: grid; gap: 10px; margin: 8px 0 4px; }
+  .opt { text-align: left; border: 1.5px solid var(--line); background: #fff; padding: 14px; font: inherit; color: var(--ink); cursor: pointer; width: 100%; }
+  .opt.on { border: 2.5px solid var(--ink); box-shadow: inset 6px 0 0 var(--neon); }
+  .opt .ol { font: 700 13px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: #5b636a; }
+  .opt .ot { display: flex; justify-content: space-between; gap: 10px; font-weight: 700; font-size: 17px; margin-top: 4px; }
+  .opt .os { font-size: 14px; color: #5b636a; margin-top: 4px; }
+  .depbox { border: 2px solid var(--ink); padding: 16px; margin-top: 18px; }
+  .depbox .amt { font: 700 30px var(--cond); margin: 4px 0 6px; }
+  .depbox .btn { margin-top: 10px; display: block; text-align: center; text-decoration: none; }
+  .btn-line2 { display: block; text-align: center; border: 1.5px solid var(--ink); padding: 14px; margin-top: 10px; background: #fff; color: var(--ink); font: 700 15px var(--cond); letter-spacing: .06em; text-transform: uppercase; text-decoration: none; width: 100%; }
   .yourtotal { display: flex; justify-content: space-between; font: 700 22px var(--cond); margin-top: 12px; padding: 10px 0; border-top: 2px solid var(--ink); }
   .st124 { border: 1px solid #9aa2a8; background: #f6f7f3; padding: 14px; margin: 16px 0 6px; }
   .st124 .opts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 6px 0 10px; font-size: 15px; }
@@ -90,6 +100,8 @@
   var token = new URLSearchParams(location.search).get("t") || "";
   var app = document.getElementById("app");
   var chosenAddons = [];
+  var chosenOption = null;
+  var depositEl = null;
 
   function el(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -122,7 +134,15 @@
 
   function render(d) {
     if (d.kind === "st124") { renderSt124(d); return; }
-    var p = d.payload || {}, b = p.business || {}, c = p.customer || {}, q = p.quote || {}, t = p.totals || {}, terms = p.terms || {};
+    var p = d.payload || {};
+    var opts = p.options || [];
+    if (opts.length) {
+      if (d.status === "signed" && d.choice) chosenOption = d.choice;
+      if (chosenOption == null || !opts.some(function (o) { return o.id === chosenOption; })) chosenOption = opts[0].id;
+      var co = opts.filter(function (o) { return o.id === chosenOption; })[0];
+      p = Object.assign({}, p, { quote: Object.assign({}, p.quote, co.quote || {}), lines: co.lines || [], labor: co.labor || {}, parts: co.parts || {}, totals: co.totals || {}, st124: co.st124 || null });
+    }
+    var b = p.business || {}, c = p.customer || {}, q = p.quote || {}, t = p.totals || {}, terms = p.terms || {};
     document.title = (b.name || "Quote") + " · " + (q.number || d.quote_number);
     app.innerHTML = "";
 
@@ -146,6 +166,28 @@
     ]));
     if (d.status === "canceled") {
       m.appendChild(el("div", { cls: "note", text: "This quote was replaced or canceled, so it can't be signed. Please contact " + (b.name || "the contractor") + (b.phone ? " at " + b.phone : "") + "." }));
+    }
+
+    if (opts.length) {
+      var signedOpt = d.status === "signed";
+      m.appendChild(el("h2", { text: signedOpt ? "Option chosen" : "Choose an option" }));
+      if (!signedOpt) m.appendChild(el("p", { cls: "muted", style: "font-size:14px;margin:4px 0", text: "Tap one to see its details and price below. You'll sign for the one you pick." }));
+      var box = el("div", { cls: "opts" });
+      opts.forEach(function (o) {
+        if (signedOpt && o.id !== chosenOption) return;
+        var on = o.id === chosenOption;
+        var bt = el("button", { cls: "opt" + (on ? " on" : ""), type: "button" }, [
+          el("div", { cls: "ol", text: (on ? "✓ " : "") + (o.label || "Option") }),
+          el("div", { cls: "ot" }, [el("span", { text: (o.quote && o.quote.title) || "" }), el("span", { text: money(o.totals && o.totals.total) })]),
+          o.summary ? el("div", { cls: "os", text: o.summary }) : null,
+        ]);
+        if (!signedOpt) bt.addEventListener("click", function () {
+          if (chosenOption === o.id) return;
+          var y = window.scrollY; chosenOption = o.id; render(d); window.scrollTo(0, y);
+        });
+        box.appendChild(bt);
+      });
+      m.appendChild(box);
     }
 
     m.appendChild(el("h2", { text: "Customer and job" }));
@@ -226,9 +268,11 @@
         var update = function () {
           var sum = 0; addons.forEach(function (a) { if (chosenAddons.indexOf(a.id) >= 0) sum += priceOf(a); });
           yt.textContent = money(t.total + sum);
+          if (depositEl) depositEl.textContent = depositText(p.deposit, t.total + sum);
         };
         addons.forEach(function (a) {
           var cb = el("input", { type: "checkbox" });
+          cb.checked = chosenAddons.indexOf(a.id) >= 0;
           cb.addEventListener("change", function () {
             chosenAddons = chosenAddons.filter(function (x) { return x !== a.id; });
             if (cb.checked) chosenAddons.push(a.id);
@@ -238,6 +282,7 @@
             el("span", { cls: "pr", text: "+" + money(priceOf(a)) })]));
         });
         m.appendChild(el("div", { cls: "yourtotal" }, [el("span", { text: "Your total" }), yt]));
+        setTimeout(update, 0);
       }
     }
     if (p.financing && p.financing.url) {
@@ -258,9 +303,47 @@
     (p.notices || []).forEach(function (n) { notices.appendChild(el("p", { text: n })); });
     m.appendChild(notices);
 
-    if (d.status === "signed") { m.appendChild(signedBlock(d.signer_name, d.signed_at, d.signature_png, b, d.st124)); return; }
+    // What the customer is agreeing to pay in total (with the add-ons they picked).
+    var grand = function () {
+      var picked = d.status === "signed" ? (d.addons || []) : chosenAddons, rate = (Number(t.taxRate) || 0) / 100;
+      return (Number(t.total) || 0) + (p.addons || []).reduce(function (a, x) { return a + (picked.indexOf(x.id) >= 0 ? x.price * (1 + (x.taxable ? rate : 0)) : 0); }, 0);
+    };
+    var dep = p.deposit && Number(p.deposit.pct) > 0 ? p.deposit : null;
+    if (d.status === "signed") {
+      m.appendChild(signedBlock(d.signer_name, d.signed_at, d.signature_png, b, d.st124));
+      if (dep && !dep.paid) m.appendChild(depositBox(dep, grand(), q.number || d.quote_number, b));
+      return;
+    }
     if (d.status !== "sent") return;
-    m.appendChild(signBlock(d, b, p.st124 ? "quote+st124" : "quote"));
+    depositEl = null;
+    if (dep) {
+      depositEl = el("div", { cls: "note", text: depositText(dep, grand()) });
+      m.appendChild(depositEl);
+    }
+    m.appendChild(signBlock(d, b, p.st124 ? "quote+st124" : "quote", function () { return dep ? depositBox(dep, grand(), q.number || d.quote_number, b) : null; }));
+  }
+
+  function depositAmount(dep, total) { return Math.round(total * Number(dep.pct)) / 100; }
+  function depositText(dep, total) {
+    return "A " + qty(dep.pct) + "% deposit (" + money(depositAmount(dep, total)) + ") is due when you sign, to order materials and reserve your spot. The rest is due when the job is done. Ways to pay show after you sign.";
+  }
+  function depositBox(dep, total, number, b) {
+    var amt = depositAmount(dep, total);
+    var box = el("div", { cls: "depbox" }, [el("div", { cls: "kicker", text: "Deposit due now" }), el("div", { cls: "amt", text: money(amt) }),
+      el("div", { cls: "muted", style: "font-size:14px", text: qty(dep.pct) + "% of " + money(total) + ". The rest is due when the job is done." })]);
+    if (dep.card) box.appendChild(el("a", { cls: "btn", href: String(dep.card).replace("{amount}", amt.toFixed(2)), target: "_blank", rel: "noopener", text: "Pay " + money(amt) + " by card" }));
+    if (dep.venmo) {
+      var user = String(dep.venmo).replace(/^@/, "").trim();
+      box.appendChild(el("a", { cls: "btn-line2", href: "https://venmo.com/" + encodeURIComponent(user) + "?txn=pay&amount=" + amt.toFixed(2) + "&note=" + encodeURIComponent("Deposit " + (number || "")), target: "_blank", rel: "noopener", text: "Pay with Venmo" }));
+    }
+    if (dep.zelle) {
+      var z = el("button", { cls: "btn-line2", type: "button", text: "Zelle: " + dep.zelle + " · tap to copy" });
+      z.addEventListener("click", function () { (navigator.clipboard ? navigator.clipboard.writeText(dep.zelle) : Promise.reject()).then(function () { z.textContent = "Copied: " + dep.zelle; }, function () {}); });
+      box.appendChild(z);
+      box.appendChild(el("div", { cls: "muted", style: "font-size:13px;margin-top:6px", text: "In your bank app, choose Zelle and send " + money(amt) + " to " + dep.zelle + ". Put " + (number || "the quote number") + " in the memo." }));
+    }
+    box.appendChild(el("div", { cls: "muted", style: "font-size:13px;margin-top:8px", text: "Cash or check is fine too." + (b.phone ? " Questions? Call or text " + b.phone + "." : "") }));
+    return box;
   }
 
   // ---- Form ST-124 on its own (for work already done or quoted earlier) ----
@@ -348,7 +431,7 @@
     ]);
   }
 
-  function signBlock(d, b, mode) {
+  function signBlock(d, b, mode, after) {
     var box = el("div", { cls: "signbox noprint" });
     box.appendChild(el("div", { cls: "kicker", text: mode === "st124" ? "To sign Form ST-124" : "To approve, sign below" }));
     var st = mode === "st124" ? st124Choices(false) : mode === "quote+st124" ? st124Choices(true, d.agree_st124) : null;
@@ -415,10 +498,15 @@
       var sig = drawn ? signaturePng() : null;
       if (!sig) { err.textContent = "Please sign in the box with your finger."; return; }
       btn.disabled = true; btn.textContent = "Signing…";
-      fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", t: token, name: n, agree: true, signature: sig, st124: stv, addons: chosenAddons }) })
+      fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", t: token, name: n, agree: true, signature: sig, st124: stv, addons: chosenAddons, choice: chosenOption }) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
-          if (res.ok) { box.replaceWith(signedBlock(n, res.j.signed_at, sig, b, stv)); wirePrint(); window.scrollTo(0, document.body.scrollHeight); return; }
+          if (res.ok) {
+            var sb = signedBlock(n, res.j.signed_at, sig, b, stv); box.replaceWith(sb);
+            var extra = after ? after() : null; if (extra) sb.after(extra);
+            document.querySelectorAll(".opt").forEach(function (o) { o.disabled = true; });
+            wirePrint(); window.scrollTo(0, document.body.scrollHeight); return;
+          }
           if (res.j.error === "already_signed") { location.reload(); return; }
           if (res.j.error === "canceled") { err.textContent = "This quote was replaced or canceled. Please contact the contractor."; return; }
           throw new Error();

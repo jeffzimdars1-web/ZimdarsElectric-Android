@@ -46,7 +46,8 @@ object InboxImport {
         val name = d.optString("name").trim(); val phone = d.optString("phone").trim(); val address = d.optString("address").trim()
         var cust = dao.customersNow().firstOrNull { digits(it.phone).length == 10 && digits(it.phone) == digits(phone) }
         if (cust == null) {
-            val nc = Customer(name = name.ifBlank { phone }, phone = phone, email = d.optString("email"), address = address)
+            val src = d.optString("source").trim().let { if (it.isBlank() || it == "Other") "Booking page" else it }
+            val nc = Customer(name = name.ifBlank { phone }, phone = phone, email = d.optString("email"), address = address, source = src)
             cust = nc.copy(id = dao.insertCustomer(nc))
         } else if (address.isNotBlank() && cust.allProperties.none { it.address.equals(address, true) }) {
             cust = if (cust.address.isBlank()) cust.copy(address = address) else cust.withProperties(cust.otherProperties + Customer.Property("", address))

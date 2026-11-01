@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
         kind: r.kind, status: r.status, quote_number: r.quote_number, payload: r.payload,
         agree_text: r.kind === "st124" ? AGREE_ST124 : AGREE, agree_st124: AGREE_ST124,
         signed_at: r.signed_at, signer_name: r.signer_name, signature_png: r.status === "signed" ? r.signature_png : null,
-        confirmed_at: r.confirmed_at, st124: r.st124, reschedule: r.reschedule, addons: r.addons,
+        confirmed_at: r.confirmed_at, st124: r.st124, reschedule: r.reschedule, addons: r.addons, choice: r.choice,
       });
     }
     if (req.method !== "POST") return json({ error: "method" }, 405);
@@ -126,14 +126,21 @@ Deno.serve(async (req) => {
       if (r.status !== "sent") return json({ error: r.status === "signed" ? "already_signed" : "canceled" }, 409);
       const st = cleanSt124(body.st124);
       if (r.kind === "st124" && !st) return json({ error: "st124" }, 400);
-      if (r.kind === "quote" && r.payload?.st124 && !st) return json({ error: "st124" }, 400);
+      const options = (r.payload?.options ?? []) as any[];
+      let choice: string | null = null;
+      if (options.length) {
+        choice = String(body.choice ?? "");
+        if (!options.some((o) => String(o.id) === choice)) return json({ error: "choice" }, 400);
+      }
+      const needsSt = options.length ? !!options.find((o) => String(o.id) === choice)?.st124 : !!r.payload?.st124;
+      if (r.kind === "quote" && needsSt && !st) return json({ error: "st124" }, 400);
       const offered = new Set(((r.payload?.addons ?? []) as any[]).map((a) => a.id));
       const addons = (Array.isArray(body.addons) ? body.addons : []).filter((n: unknown) => Number.isInteger(n) && offered.has(n)).slice(0, 50);
       const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || null;
       const { data: up } = await db.from("sign_requests").update({
         status: "signed", signed_at: new Date().toISOString(), signer_name: name, signature_png: sig,
         signer_ip: ip, signer_agent: (req.headers.get("user-agent") ?? "").slice(0, 300), agreed_text: r.kind === "st124" ? AGREE_ST124 : AGREE,
-        st124: st, addons,
+        st124: st, addons, choice,
       }).eq("id", r.id).eq("status", "sent").select("signed_at").maybeSingle();
       if (!up) return json({ error: "already_signed" }, 409);
       return json({ ok: true, signed_at: up.signed_at });
@@ -162,7 +169,7 @@ Deno.serve(async (req) => {
       const tokens = (Array.isArray(body.tokens) ? body.tokens : []).filter(validToken).slice(0, 100);
       if (tokens.length === 0) return json({ items: [] });
       const { data } = await db.from("sign_requests")
-        .select("token,kind,status,viewed_at,signed_at,confirmed_at,signer_name,signer_ip,signer_agent,agreed_text,signature_png,st124,reschedule,addons").in("token", tokens);
+        .select("token,kind,status,viewed_at,signed_at,confirmed_at,signer_name,signer_ip,signer_agent,agreed_text,signature_png,st124,reschedule,addons,choice").in("token", tokens);
       return json({ items: data ?? [] });
     }
     if (body.action === "retime") {

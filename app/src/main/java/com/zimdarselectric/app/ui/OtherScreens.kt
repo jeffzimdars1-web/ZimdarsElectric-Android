@@ -3,6 +3,7 @@ package com.zimdarselectric.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.layout.onSizeChanged
@@ -368,10 +369,11 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
         var email by remember(c.id) { mutableStateOf(c.email) }
         var address by remember(c.id) { mutableStateOf(c.address) }
         var notes by remember(c.id) { mutableStateOf(c.notes) }
+        var source by remember(c.id) { mutableStateOf(c.source) }
         val props = remember(c.id) { androidx.compose.runtime.mutableStateListOf<Customer.Property>().apply { addAll(c.otherProperties) } }
         var propsKey by remember(c.id) { mutableStateOf(0) }
         ZDialog(if (c.id == 0L) "New customer" else "Edit customer", { editing = null },
-            confirm = "Save" to { if (name.isNotBlank()) { vm.saveCustomer(c.copy(name = name.trim(), phone = phone.trim(), email = email.trim(), address = address.trim(), notes = notes.trim()).withProperties(props.toList())); editing = null } },
+            confirm = "Save" to { if (name.isNotBlank()) { vm.saveCustomer(c.copy(name = name.trim(), phone = phone.trim(), email = email.trim(), address = address.trim(), notes = notes.trim(), source = source).withProperties(props.toList())); editing = null } },
             dismiss = (if (c.id == 0L) "Cancel" else "Delete") to { if (c.id != 0L) vm.deleteCustomer(c); editing = null }) {
           Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
             Field("Name", name, { name = it }); Spacer(Modifier.height(6.dp))
@@ -392,6 +394,10 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
             GhostButton("+ Add another property", Modifier.fillMaxWidth()) { props.add(Customer.Property("", "")) }
             Spacer(Modifier.height(8.dp))
             Field("Notes (panel location, gate code…)", notes, { notes = it }, singleLine = false)
+            Spacer(Modifier.height(10.dp))
+            Label("How did they find you?")
+            Spacer(Modifier.height(4.dp))
+            SourceChips(source) { source = it }
             if (c.id != 0L) {
                 Spacer(Modifier.height(10.dp))
                 CustomerPageButton(vm, c)
@@ -618,6 +624,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             TextFieldSaved("Other payment note (e.g. Checks payable to Zimdars Electric LLC)", s.payNote, "paynote") { save(s.copy(payNote = it.trim())) }
             Gap()
             NumField("Remind unpaid invoices after (days)", s.invoiceReminderDays.toDouble(), "ird") { save(s.copy(invoiceReminderDays = it.toInt().coerceIn(1, 60))) }
+            Gap()
+            NumField("Deposit on new quotes (% at signing, 0 = none)", s.depositPct, "depdef") { save(s.copy(depositPct = it.coerceIn(0.0, 100.0))) }
 
             SectionHeader("12", "Google reviews")
             Text("Paste your Google review link. On your phone: open Google Maps → your business → Ask for reviews (or Share profile) → copy link. Customers get it by text the day after a job is done.",
@@ -638,11 +646,16 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 NumField("NY State %", s.stateTaxPct, "nys", Modifier.weight(1f)) { save(s.copy(stateTaxPct = it.coerceIn(0.0, 12.0))) }
             }
 
-            SectionHeader("15", "Quote follow-ups")
+            SectionHeader("15", "Automatic texts")
             Text("If a customer hasn't signed a quote, the app texts them a friendly reminder (up to 2 times, between 10 am and 7 pm).", color = Z.muted, fontSize = 13.sp)
             Gap()
             Segmented(listOf("Off", "On"), if (s.followUpOn) 1 else 0) { save(s.copy(followUpOn = it == 1)) }
             if (s.followUpOn) { Gap(); NumField("Text them after (days)", s.followUpDays.toDouble(), "fud") { save(s.copy(followUpDays = it.toInt().coerceIn(1, 30))) } }
+
+            Gap()
+            Label("Repeat-work reminders (set on each job)")
+            Spacer(Modifier.height(4.dp))
+            Segmented(listOf("Off", "On"), if (s.remindersOn) 1 else 0) { save(s.copy(remindersOn = it == 1)) }
 
             SectionHeader("16", "Missed-call text-back")
             MissedCallSettings(s) { save(it) }
@@ -858,6 +871,19 @@ private fun CustomerPageButton(vm: AppViewModel, c: Customer) {
                 runCatching { context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(android.content.Intent.EXTRA_TEXT, u), "Share").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
+        }
+    }
+}
+
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun SourceChips(selected: String, onPick: (String) -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        com.zimdarselectric.app.data.Leads.sources.forEach { src ->
+            val on = selected == src
+            Text(src, color = if (on) Z.neon else Z.muted, fontSize = 13.sp,
+                modifier = Modifier.border(1.dp, if (on) Z.neon else Z.line).clickable { onPick(if (on) "" else src) }.padding(horizontal = 10.dp, vertical = 7.dp))
         }
     }
 }

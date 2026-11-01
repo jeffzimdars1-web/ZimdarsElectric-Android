@@ -57,7 +57,30 @@ object SignService {
     }
 
     /** What the customer sees: a snapshot of the quote at the moment it's sent. */
-    fun payload(q: Quote, lines: List<QuoteLine>, customer: Customer?, s: Settings, changeOf: String? = null): JSONObject {
+    /** One Good / Better / Best choice for the signing page. */
+    private fun optionJson(q: Quote, lines: List<QuoteLine>, s: Settings, index: Int): JSONObject {
+        val t = computeTotals(q, lines, s)
+        val factor = 1 + q.markupPct / 100.0
+        fun r2(v: Double) = Math.round(v * 100) / 100.0
+        return JSONObject().put("id", q.number).put("label", q.optionLabel.ifBlank { "Option ${index + 1}" })
+            .put("summary", q.notes.lineSequence().firstOrNull { it.isNotBlank() }?.take(160) ?: "")
+            .put("quote", JSONObject().put("title", q.title).put("jobType", q.jobType).put("notes", q.notes).put("repairNotes", q.repairNotes).put("scheduled", q.scheduled))
+            .put("lines", JSONArray().apply {
+                lines.filter { !it.optional }.forEach { l ->
+                    put(JSONObject().put("name", l.name).put("qty", l.qty).put("unit", l.unit)
+                        .put("price", r2(l.unitCost * factor)).put("total", r2(l.qty * l.unitCost * factor)).put("repair", l.repair))
+                }
+            })
+            .put("labor", JSONObject().put("hours", q.laborHours).put("rate", q.laborRate).put("amount", r2(t.labor))
+                .put("repairHours", q.repairHours).put("installAmount", r2(q.laborHours * q.laborRate)).put("repairAmount", r2(q.repairHours * q.laborRate)))
+            .put("parts", JSONObject().put("install", r2(t.installPart)).put("repair", r2(t.repairPart)))
+            .put("totals", JSONObject().put("materials", r2(t.materialsPrice)).put("labor", r2(t.labor))
+                .put("subtotal", r2(t.materialsPrice + t.labor)).put("taxRate", q.taxRatePct).put("tax", r2(t.salesTax)).put("total", r2(t.total)))
+            .apply { if (q.needsSt124) put("st124", st124Info(q)) }
+    }
+
+    fun payload(q: Quote, lines: List<QuoteLine>, customer: Customer?, s: Settings, changeOf: String? = null,
+                options: List<Pair<Quote, List<QuoteLine>>> = emptyList()): JSONObject {
         val t = computeTotals(q, lines, s)
         val factor = 1 + q.markupPct / 100.0
         fun r2(v: Double) = Math.round(v * 100) / 100.0
@@ -88,7 +111,14 @@ object SignService {
                 if (offers.isNotEmpty()) put("addons", JSONArray().apply {
                     offers.forEach { l -> put(JSONObject().put("id", l.id.toInt()).put("name", l.name).put("price", r2(linePrice(q, l))).put("taxable", isRepairLine(q, l))) }
                 })
-                if (s.financingLink.isNotBlank() && t.total >= s.financingMin)
+                if (options.isNotEmpty()) {
+                    val all = listOf(q to lines) + options
+                    put("options", JSONArray().apply { all.forEachIndexed { i, (oq, ol) -> put(optionJson(oq, ol, s, i)) } })
+                }
+                val most = (listOf(t.total) + options.map { (oq, ol) -> computeTotals(oq, ol, s).total }).max()
+                if (q.depositPct > 0) put("deposit", JSONObject().put("pct", q.depositPct).put("venmo", s.venmo).put("zelle", s.zelle)
+                    .put("card", s.cardPayLink.trim()).put("paid", q.depositPaidAt != null))
+                if (s.financingLink.isNotBlank() && most >= s.financingMin)
                     put("financing", JSONObject().put("url", s.financingLink.trim()).put("text", "See monthly payment options →"))
                 if (q.needsSt124) put("st124", st124Info(q))
                 if (changeOf != null) getJSONObject("quote").put("changeOf", changeOf)
@@ -216,6 +246,24 @@ object SignService {
                         signaturePath = sig?.absolutePath ?: "",
                         status = if (q.status in setOf(Status.DRAFT, Status.SENT)) Status.APPROVED else q.status,
                     )
+                    // Good / Better / Best: if they picked another option, that option becomes this job.
+                    val choice = item.optString("choice").takeIf { it.isNotBlank() && it != "null" }
+                    val siblings = dao.quotesNow().filter { it.optionOf == q.id }
+                    if (siblings.isNotEmpty()) {
+                        val chosen = siblings.firstOrNull { it.number == choice }
+                        if (chosen != null) {
+                            val mine = dao.linesFor(q.id).filter { !it.optional }; val theirs = dao.linesFor(chosen.id).filter { !it.optional }
+                            mine.forEach { dao.updateLine(it.copy(quoteId = chosen.id)) }
+                            theirs.forEach { dao.updateLine(it.copy(quoteId = q.id)) }
+                            dao.updateQuote(chosen.copy(title = q.title, notes = q.notes, repairNotes = q.repairNotes, jobType = q.jobType, optionLabel = q.optionLabel,
+                                laborHours = q.laborHours, repairHours = q.repairHours, laborRate = q.laborRate, markupPct = q.markupPct, taxRatePct = q.taxRatePct, hoursOnSite = q.hoursOnSite))
+                            updated = updated.copy(title = chosen.title, notes = chosen.notes, repairNotes = chosen.repairNotes, jobType = chosen.jobType, optionLabel = chosen.optionLabel,
+                                laborHours = chosen.laborHours, repairHours = chosen.repairHours, laborRate = chosen.laborRate, markupPct = chosen.markupPct,
+                                taxRatePct = chosen.taxRatePct, hoursOnSite = chosen.hoursOnSite)
+                        }
+                        // The options they didn't pick are kept for your records but closed.
+                        dao.quotesNow().filter { it.optionOf == q.id }.forEach { dao.updateQuote(it.copy(status = Status.DECLINED)) }
+                    }
                     // Record which add-ons they picked (the rest are marked "passed").
                     val picks = item.optJSONArray("addons")?.let { a -> (0 until a.length()).map { a.optLong(it) }.toSet() } ?: emptySet()
                     dao.linesFor(q.id).filter { it.optional && it.addOnState == 0 }.forEach { l ->

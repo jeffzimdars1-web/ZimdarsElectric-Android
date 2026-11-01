@@ -179,7 +179,7 @@ fun QuotesScreen(vm: AppViewModel, nav: Nav) {
         0 -> quotes.filter { it.status in Status.holding }
         1 -> quotes.filter { it.status == Status.DONE }
         else -> quotes
-    }
+    }.filter { it.optionOf == null }
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
         Spacer(Modifier.height(22.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

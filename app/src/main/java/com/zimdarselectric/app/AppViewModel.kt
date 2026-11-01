@@ -104,7 +104,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val customer = current.customerId?.let { dao.customer(it) }
         try {
             val changeOf = current.parentId?.let { dao.quote(it)?.number }
-            val link = SignService.create(s.signKey.trim(), SignService.payload(current, lines, customer, s, changeOf), current.number,
+            val options = dao.quotesNow().filter { it.optionOf == current.id }.sortedBy { it.id }.map { it to dao.linesFor(it.id) }
+            val link = SignService.create(s.signKey.trim(), SignService.payload(current, lines, customer, s, changeOf, options), current.number,
                 current.signToken.takeIf { current.signedAt == null })
             val now = System.currentTimeMillis()
             val latest = dao.quote(q.id) ?: return@launch
@@ -332,7 +333,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun publishPortal(customerId: Long): String {
         val s = dao.settingsNow() ?: Settings()
         val c = dao.customer(customerId) ?: throw IllegalStateException("Customer not found")
-        val all = dao.quotesNow().filter { it.customerId == c.id }
+        val all = dao.quotesNow().filter { it.customerId == c.id && it.optionOf == null }
         val lines = dao.allLinesNow()
         val items = org.json.JSONArray()
         fun status(q: Quote) = when {
@@ -379,7 +380,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val s = dao.settingsNow() ?: Settings()
         val number = "Q-" + s.nextQuoteNo.toString().padStart(4, '0')
         val id = dao.insertQuote(
-            Quote(number = number, laborRate = s.laborRate, markupPct = s.markupPct, taxRatePct = s.repairTaxPct)
+            Quote(number = number, laborRate = s.laborRate, markupPct = s.markupPct, taxRatePct = s.repairTaxPct, depositPct = s.depositPct)
         )
         dao.saveSettings(s.copy(nextQuoteNo = s.nextQuoteNo + 1))
         onCreated(id)
@@ -476,8 +477,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun saveQuote(q: Quote) = viewModelScope.launch { dao.updateQuote(q.copy(updatedAt = System.currentTimeMillis())) }
 
     fun deleteQuote(q: Quote) = viewModelScope.launch {
+        dao.quotesNow().filter { it.optionOf == q.id }.forEach { dao.deleteLinesFor(it.id); dao.deleteQuote(it) }
         dao.deleteLinesFor(q.id)
         dao.deleteQuote(q)
+    }
+
+    /** Good / Better / Best: adds another option to [main], starting as a copy of the last one so you only change what's different. */
+    fun addOption(main: Quote, onCreated: (Long) -> Unit) = viewModelScope.launch {
+        val existing = dao.quotesNow().filter { it.optionOf == main.id }.sortedBy { it.id }
+        if (existing.size >= 2) return@launch
+        val labels = listOf("Good", "Better", "Best")
+        val m = dao.quote(main.id) ?: return@launch
+        if (m.optionLabel.isBlank()) dao.updateQuote(m.copy(optionLabel = labels[0]))
+        val from = existing.lastOrNull() ?: m
+        val id = dao.insertQuote(from.copy(id = 0, number = m.number + "-" + ('B' + existing.size), optionOf = m.id, parentId = null,
+            optionLabel = labels[existing.size + 1], status = Status.DRAFT, signToken = "", signUrl = "", sentAt = null, viewedAt = null, signedAt = null,
+            signerName = "", signerIp = "", signaturePath = "", createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis(),
+            remindLater = "", checklist = "", privateNote = ""))
+        dao.linesFor(from.id).filter { !it.optional }.forEach { dao.insertLine(it.copy(id = 0, quoteId = id)) }
+        onCreated(id)
+    }
+
+    /** You got the deposit (cash, Venmo, card…). */
+    fun markDepositPaid(q: Quote, amount: Double) = viewModelScope.launch {
+        dao.quote(q.id)?.let { dao.updateQuote(it.copy(depositPaid = amount, depositPaidAt = System.currentTimeMillis())) }
+    }
+    fun undoDeposit(q: Quote) = viewModelScope.launch {
+        dao.quote(q.id)?.let { dao.updateQuote(it.copy(depositPaid = 0.0, depositPaidAt = null)) }
     }
 
     fun addLine(l: QuoteLine) = viewModelScope.launch { dao.insertLine(l); touch(l.quoteId) }
@@ -597,7 +623,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val s = dao.settingsNow() ?: Settings()
         val current = dao.quote(q.id) ?: return@launch
         val customer = current.customerId?.let { dao.customer(it) }
-        val due = com.zimdarselectric.app.data.Billing.invoiceTotal(current, dao.quotesNow().filter { it.parentId == current.id }, dao.allLinesNow(), s) - current.paidAmount
+        val due = com.zimdarselectric.app.data.Billing.invoiceTotal(current, dao.quotesNow().filter { it.parentId == current.id }, dao.allLinesNow(), s) - com.zimdarselectric.app.data.Billing.paidSoFar(current)
         val ok = com.zimdarselectric.app.data.CustomerTexts.sendText(app, current, customer, com.zimdarselectric.app.data.Billing.reminderText(current, s, due, current.invoiceUrl))
         dao.updateQuote(current.copy(invoiceRemindedAt = System.currentTimeMillis()))
         onDone(ok)

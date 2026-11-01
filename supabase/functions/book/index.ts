@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       const photos = (Array.isArray(body.photos) ? body.photos : [])
         .filter((p: unknown) => typeof p === "string" && p.startsWith("data:image/jpeg;base64,") && p.length < 700_000).slice(0, 3);
       const times = (Array.isArray(body.times) ? body.times : []).map((t: unknown) => str(t, 60)).filter(Boolean).slice(0, 6);
-      const data = { name, phone, email: str(body.email, 120), address, problem, times, urgent: body.urgent === true, photos, received: new Date().toISOString() };
+      const data = { name, phone, email: str(body.email, 120), address, problem, times, urgent: body.urgent === true, source: str(body.source, 40), photos, received: new Date().toISOString() };
       await db.from("app_inbox").insert({ kind: "request", data });
       return json({ ok: true });
     }

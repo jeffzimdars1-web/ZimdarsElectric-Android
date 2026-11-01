@@ -1,5 +1,6 @@
 package com.zimdarselectric.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ fun MoneyScreen(vm: AppViewModel, onBack: () -> Unit, onOpenQuote: (Long) -> Uni
     val expenses by vm.expenses.collectAsState()
     val trips by vm.trips.collectAsState()
     val s by vm.settings.collectAsState()
+    val customers by vm.customers.collectAsState()
     var tab by remember { mutableStateOf(0) }
     var month by remember { mutableStateOf(YearMonth.now()) }
     val year = LocalDate.now().year
@@ -49,7 +51,7 @@ fun MoneyScreen(vm: AppViewModel, onBack: () -> Unit, onOpenQuote: (Long) -> Uni
     Column(Modifier.fillMaxSize()) {
         BackHeader("Money", onBack)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
-            Segmented(listOf("Month", "Sales tax", "Income tax"), tab) { tab = it }
+            Segmented(listOf("Month", "Sales tax", "Inc. tax", "Leads"), tab) { tab = it }
             Spacer(Modifier.height(12.dp))
             when (tab) {
                 0 -> {
@@ -95,7 +97,7 @@ fun MoneyScreen(vm: AppViewModel, onBack: () -> Unit, onOpenQuote: (Long) -> Uni
                     Text("You file on New York's Online Services (tax.ny.gov) once you're registered for sales tax. If you have no sales in a quarter, you still file a \"no sales\" return.",
                         color = Z.muted, fontSize = 12.sp)
                 }
-                else -> {
+                2 -> {
                     Text("A rough estimate of what you owe on your business profit: 15.3% self-employment tax plus your federal (${qtyText(s.fedTaxPct)}%) and NY (${qtyText(s.stateTaxPct)}%) rates. Change the rates in Settings.",
                         color = Z.muted, fontSize = 13.sp)
                     var ytd = 0.0
@@ -115,6 +117,23 @@ fun MoneyScreen(vm: AppViewModel, onBack: () -> Unit, onOpenQuote: (Long) -> Uni
                     Spacer(Modifier.height(8.dp))
                     Text("Because you also have a W-2 job, you can cover this instead by raising the withholding at DeIorio's (new W-4). Either way avoids an underpayment penalty. Federal payments: IRS Direct Pay. NY: Online Services.",
                         color = Z.muted, fontSize = 12.sp)
+                }
+            }
+            if (tab == 3) {
+                Text("Where your work comes from in $year: new customers and money from paid jobs (not counting sales tax). Set it on each customer: Customers → tap them → How did they find you.",
+                    color = Z.muted, fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                val rows = com.zimdarselectric.app.data.Leads.bySource(MoneyCalc.ms(LocalDate.of(year, 1, 1)), MoneyCalc.ms(LocalDate.of(year + 1, 1, 1)), customers, quotes, lines, s)
+                val top = rows.maxOfOrNull { it.income } ?: 0.0
+                if (rows.isEmpty()) Text("Nothing yet this year.", color = Z.muted)
+                rows.forEach { r ->
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(r.source, color = if (r.source == "Not set") Z.muted else Z.text, fontSize = 17.sp)
+                        Text(money(r.income), fontFamily = Mono, color = Z.neon)
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.padding(top = 4.dp).fillMaxWidth(if (top > 0) (r.income / top).toFloat().coerceIn(0.02f, 1f) else 0.02f)
+                        .height(6.dp).background(Z.neon))
+                    Label("${r.customers} new customer${if (r.customers == 1) "" else "s"} · ${r.jobs} paid job${if (r.jobs == 1) "" else "s"}")
                 }
             }
             SectionHeader("BOOKS", "For your accountant")

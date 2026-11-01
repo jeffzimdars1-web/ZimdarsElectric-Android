@@ -52,7 +52,7 @@
   .linkbtn { background: none; color: var(--ink); text-decoration: underline; padding: 12px 0 0; font: 600 15px system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
   .field { display: grid; gap: 6px; margin-top: 14px; }
   .field label { font-weight: 600; font-size: 15px; }
-  .field input, .field textarea { width: 100%; font-size: 17px; padding: 12px; border: 1px solid #9aa2a8; border-radius: 0; background: #fff; font-family: inherit; }
+  .field input, .field textarea, .field select { width: 100%; font-size: 17px; padding: 12px; border: 1px solid #9aa2a8; border-radius: 0; background: #fff; font-family: inherit; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chips label { border: 1.5px solid var(--ink); padding: 9px 12px; font-size: 14px; font-weight: 600; cursor: pointer; user-select: none; }
   .chips input { display: none; }
@@ -78,6 +78,7 @@
   <div class="field"><label for="pr">What do you need done?</label><textarea id="pr" rows="4" maxlength="1500" placeholder="e.g. Kitchen outlets stopped working, or I'd like a new circuit for a dryer"></textarea></div>
   <div class="field"><label>Photos (optional, up to 3)</label><input id="ph1" type="file" accept="image/*" multiple><div class="thumbs" id="th"></div></div>
   <div class="field"><label>When works for you?</label><div class="chips" id="ch"></div></div>
+  <div class="field"><label for="so">How did you hear about us? (optional)</label><select id="so"><option value="">Choose one</option><option>Google</option><option>Facebook</option><option value="Referral">A friend or neighbor</option><option value="Truck / sign">Saw the truck or a sign</option><option value="Repeat customer">I've used you before</option><option>Other</option></select></div>
   <div class="field"><label><input type="checkbox" id="ur" style="width:auto;margin-right:8px">It's urgent (something isn't working right now)</label></div>
   <input class="hp" id="ws" tabindex="-1" autocomplete="off" aria-hidden="true">
   <div class="err" id="er" role="alert"></div>
@@ -137,7 +138,7 @@
     var btn = $("go"); btn.disabled = true; btn.textContent = "Sending…";
     fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
       action: "request", name: name, phone: phone, email: $("em").value.trim(), address: $("ad").value.trim(), problem: problem,
-      times: chosen, urgent: $("ur").checked, photos: photos, website: $("ws").value }) })
+      times: chosen, urgent: $("ur").checked, source: $("so").value, photos: photos, website: $("ws").value }) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok) throw new Error(res.j.error === "slow_down" ? "Too many requests. Please try again later or call." : "x");

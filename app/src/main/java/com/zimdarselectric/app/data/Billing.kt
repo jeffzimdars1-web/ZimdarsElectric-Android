@@ -20,6 +20,9 @@ import java.util.concurrent.TimeUnit
 object Billing {
     private fun r2(v: Double) = Math.round(v * 100) / 100.0
 
+    /** Money already received for the job: payments, plus the deposit until the job is marked paid in full. */
+    fun paidSoFar(q: Quote) = if (q.paidAt != null) q.paidAmount else q.paidAmount + q.depositPaid
+
     /** Change orders that count toward the bill: signed or approved/done. */
     fun billableChanges(children: List<Quote>) = children.filter { it.signedAt != null || it.status == Status.APPROVED || it.status == Status.DONE }
 
@@ -42,10 +45,10 @@ object Billing {
             .put("business", JSONObject().put("name", s.businessName).put("phone", s.phone).put("email", s.email).put("address", s.address).put("license", s.license))
             .put("customer", JSONObject().put("name", customer?.name ?: q.customerName).put("address", customer?.address ?: ""))
             .put("invoice", JSONObject().put("number", q.number).put("title", q.title).put("site", q.site).put("date", done)
-                .put("total", r2(total)).put("paid", r2(q.paidAmount)).put("due", r2(maxOf(0.0, total - q.paidAmount)))
+                .put("total", r2(total)).put("paid", r2(paidSoFar(q))).put("deposit", r2(if (q.depositPaidAt != null) q.depositPaid else 0.0)).put("due", r2(maxOf(0.0, total - Billing.paidSoFar(q))))
                 .put("terms", s.paymentTerms).put("parts", parts))
             .put("pay", JSONObject().put("venmo", s.venmo).put("zelle", s.zelle).put("note", s.payNote).put("phone", s.phone)
-                .put("card", cardLink(s, maxOf(0.0, total - q.paidAmount)))
+                .put("card", cardLink(s, maxOf(0.0, total - Billing.paidSoFar(q))))
                 .put("financing", if (s.financingLink.isNotBlank() && total >= s.financingMin) s.financingLink.trim() else ""))
     }
 
@@ -90,7 +93,7 @@ object Billing {
             if (q.paidAt != null || q.invoiceRemindedAt != null || q.invoiceUrl.isBlank()) continue
             if (now - sent < s.invoiceReminderDays * 86_400_000L) continue
             val customer = q.customerId?.let { dao.customer(it) }
-            val due = invoiceTotal(q, all.filter { it.parentId == q.id }, lines, s) - q.paidAmount
+            val due = invoiceTotal(q, all.filter { it.parentId == q.id }, lines, s) - paidSoFar(q)
             if (due <= 0.5) continue
             CustomerTexts.sendText(context, q, customer, reminderText(q, s, due, q.invoiceUrl))
             dao.updateQuote(q.copy(invoiceRemindedAt = now))
@@ -105,6 +108,16 @@ object Billing {
             val total = computeTotals(q, lines.filter { it.quoteId == q.id }, s).total
             CustomerTexts.sendText(context, q, customer, followUpText(q, s, total, second = q.followUps >= 1))
             dao.updateQuote(q.copy(followUps = q.followUps + 1, lastFollowUpAt = now))
+        }
+        // Repeat work: texts when a reminder you set on a job comes due (generator service, detectors…).
+        if (s.remindersOn) for (q in all) {
+            if (q.remindLater.isBlank() || q.canceledAt != null) continue
+            val items = RepeatWork.parse(q.remindLater)
+            val due = items.indexOfFirst { it.sent == null && it.due <= now } .takeIf { it >= 0 } ?: continue
+            val customer = q.customerId?.let { dao.customer(it) }
+            if (customer?.phone.isNullOrBlank()) continue
+            CustomerTexts.sendText(context, q, customer, RepeatWork.text(q, customer, s, items[due]))
+            dao.updateQuote(q.copy(remindLater = RepeatWork.write(items.mapIndexed { i, it -> if (i == due) it.copy(sent = now) else it })))
         }
         // Review request: the day after the job is done (within a week).
         if (s.reviewUrl.isNotBlank()) for (q in all) {

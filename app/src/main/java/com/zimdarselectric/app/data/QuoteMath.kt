@@ -72,7 +72,7 @@ fun computeTotals(q: Quote, allLines: List<QuoteLine>, s: Settings): QuoteTotals
  * Draft, Sent or Approved. Pass [excludeQuoteId] to leave one quote out.
  */
 fun holdsByMaterial(quotes: List<Quote>, lines: List<QuoteLine>, excludeQuoteId: Long? = null): Map<Long, Double> {
-    val holding = quotes.filter { it.status in Status.holding && it.id != excludeQuoteId }.map { it.id }.toSet()
+    val holding = quotes.filter { it.status in Status.holding && it.optionOf == null && it.id != excludeQuoteId }.map { it.id }.toSet()
     return lines.filter { it.quoteId in holding && it.materialId != null && it.counts }
         .groupBy { it.materialId!! }
         .mapValues { (_, ls) -> ls.sumOf { it.qty } }
