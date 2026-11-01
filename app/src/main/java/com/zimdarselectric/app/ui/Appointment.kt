@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 
 /** A booked visit before you know the work: customer, address, day/time, what's going on, reminders. No prices. */
 @Composable
-fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
+fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit, onHouse: (Long, String) -> Unit = { _, _ -> }) {
     val customers by vm.customers.collectAsState()
     val settings by vm.settings.collectAsState()
     val customer = customers.firstOrNull { it.id == q.customerId }
@@ -81,6 +81,8 @@ fun AppointmentEditor(vm: AppViewModel, q: Quote, onBack: () -> Unit) {
             Divider()
             Spacer(Modifier.height(8.dp))
             SiteAddress(vm, q, customer, "Address") { save(it) }
+            q.customerId?.let { cid -> val addr = q.site.ifBlank { customer?.address.orEmpty() }
+                if (addr.isNotBlank()) HouseLink { onHouse(cid, addr) } }
             Spacer(Modifier.height(8.dp))
             TextFieldSaved("What it's for (e.g. Service call)", q.title, "atitle${q.id}") { save(q.copy(title = it)) }
             Spacer(Modifier.height(8.dp))

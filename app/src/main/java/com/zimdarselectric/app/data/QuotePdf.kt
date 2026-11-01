@@ -333,6 +333,10 @@ object QuotePdf {
                 "Type" to when (q.jobType) { JobType.REPAIR -> "Repair (sales tax charged)"; JobType.BOTH -> "Install + repair (ST-124 for install, tax on repair)"; else -> "New install (get ST-124 signed)" },
                 "Labor planned" to if (q.jobType == JobType.BOTH) "${qtyText(q.laborHours)} hr install + ${qtyText(q.repairHours)} hr repair" else "${qtyText(q.laborHours)} hr",
             ))
+            House.facts(House.get(customer, q.site.ifBlank { customer?.address ?: "" })).takeIf { it.isNotEmpty() }?.let { h ->
+                section("The house")
+                facts(h)
+            }
             if (q.title.isNotBlank() || q.notes.isNotBlank() || q.repairNotes.isNotBlank()) {
                 section("Work")
                 para(q.title, strong, after = 4f)

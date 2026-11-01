@@ -79,6 +79,7 @@ sealed interface Page {
     data object PriceBook : Page
     data object JobMap : Page
     data object Money : Page
+    data class House(val customerId: Long, val address: String) : Page
 }
 
 class Nav {
@@ -115,8 +116,10 @@ fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () ->
     Column(Modifier.fillMaxSize().background(Z.bg).statusBarsPadding().imePadding()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val top = nav.stack.lastOrNull()) {
-                is Page.EditQuote -> QuoteEditor(vm, top.id, onBack = { nav.back() }, onPriceBook = { nav.open(Page.PriceBook) }, onOpenQuote = { nav.open(Page.EditQuote(it)) })
-                Page.Customers -> CustomersScreen(vm, onBack = { nav.back() })
+                is Page.EditQuote -> QuoteEditor(vm, top.id, onBack = { nav.back() }, onPriceBook = { nav.open(Page.PriceBook) }, onOpenQuote = { nav.open(Page.EditQuote(it)) },
+                    onHouse = { cid, addr -> nav.open(Page.House(cid, addr)) })
+                is Page.House -> com.zimdarselectric.app.ui.HouseScreen(vm, top.customerId, top.address, onBack = { nav.back() }, onOpenQuote = { nav.open(Page.EditQuote(it)) })
+                Page.Customers -> CustomersScreen(vm, onBack = { nav.back() }, onHouse = { cid, addr -> nav.open(Page.House(cid, addr)) })
                 Page.Tools -> ToolsScreen(onBack = { nav.back() })
                 Page.Settings -> SettingsScreen(vm, onBack = { nav.back() })
                 is Page.ExpenseDetail -> ExpenseDetailScreen(vm, top.id, onBack = { nav.back() })

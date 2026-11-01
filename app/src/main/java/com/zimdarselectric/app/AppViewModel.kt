@@ -174,7 +174,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Customers ----------
     fun saveCustomer(c: Customer, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
-        if (c.id == 0L) onSaved(dao.insertCustomer(c)) else { dao.updateCustomer(c); onSaved(c.id) }
+        // House history and the customer page are saved separately; never overwrite them with an older copy.
+        if (c.id == 0L) onSaved(dao.insertCustomer(c)) else {
+            val cur = dao.customer(c.id)
+            dao.updateCustomer(c.copy(houses = cur?.houses ?: c.houses, portalToken = cur?.portalToken ?: c.portalToken, portalUrl = cur?.portalUrl ?: c.portalUrl))
+            onSaved(c.id)
+        }
     }
     // ---------- New phone contacts ----------
     private fun digits(p: String) = p.filter(Char::isDigit).takeLast(10)
@@ -496,6 +501,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             remindLater = "", checklist = "", privateNote = ""))
         dao.linesFor(from.id).filter { !it.optional }.forEach { dao.insertLine(it.copy(id = 0, quoteId = id)) }
         onCreated(id)
+    }
+
+    /** Saves what you know about a customer's house at [address]. */
+    fun saveHouse(customerId: Long, address: String, info: Map<String, String>) = viewModelScope.launch {
+        val c = dao.customer(customerId) ?: return@launch
+        dao.updateCustomer(com.zimdarselectric.app.data.House.put(c, address, info))
     }
 
     /** You got the deposit (cash, Venmo, card…). */

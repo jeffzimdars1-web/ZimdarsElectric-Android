@@ -61,7 +61,8 @@ fun TextFieldSaved(label: String, value: String, key: Any, modifier: Modifier = 
 }
 
 @Composable
-fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook: () -> Unit = {}, onOpenQuote: (Long) -> Unit = {}) {
+fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook: () -> Unit = {}, onOpenQuote: (Long) -> Unit = {},
+                onHouse: (Long, String) -> Unit = { _, _ -> }) {
     val quotes by vm.quotes.collectAsState()
     val allLines by vm.lines.collectAsState()
     val materials by vm.materials.collectAsState()
@@ -73,7 +74,7 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
     }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.runtime.LaunchedEffect(q.id) { com.zimdarselectric.app.TodayWidget.clearAlert(ctx, q.id) }
-    if (q.kind == com.zimdarselectric.app.data.Kind.APPT) { AppointmentEditor(vm, q, onBack); return }
+    if (q.kind == com.zimdarselectric.app.data.Kind.APPT) { AppointmentEditor(vm, q, onBack, onHouse); return }
     val lines = allLines.filter { it.quoteId == q.id }
     val holdsOthers = holdsByMaterial(quotes, allLines, excludeQuoteId = q.id)
     val totals = computeTotals(q, lines, settings)
@@ -132,6 +133,8 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             Divider()
             Spacer(Modifier.height(8.dp))
             SiteAddress(vm, q, customers.firstOrNull { it.id == q.customerId }, "Job site address") { save(it) }
+            q.customerId?.let { cid -> val addr = q.site.ifBlank { customers.firstOrNull { it.id == cid }?.address.orEmpty() }
+                if (addr.isNotBlank()) HouseLink { onHouse(cid, addr) } }
             Spacer(Modifier.height(8.dp))
             SchedulePicker(q, customers.firstOrNull { it.id == q.customerId }, settings) { save(it) }
             if (q.startAt != null || q.privateNote.isNotBlank()) {

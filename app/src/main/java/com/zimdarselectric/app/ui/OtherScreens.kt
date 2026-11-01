@@ -312,7 +312,7 @@ private fun MoreRow(num: String, title: String, sub: String, onClick: () -> Unit
 // ---------------- Customers ----------------
 
 @Composable
-fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
+fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit, onHouse: (Long, String) -> Unit = { _, _ -> }) {
     val customers by vm.customers.collectAsState()
     val context = LocalContext.current
     var editing by remember { mutableStateOf<Customer?>(null) }
@@ -399,6 +399,10 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             SourceChips(source) { source = it }
             if (c.id != 0L) {
+                c.allProperties.filter { it.address.isNotBlank() }.let { ps ->
+                    if (ps.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Label("House history") }
+                    ps.forEach { p -> HouseLink((if (p.label.isNotBlank() && p.label != "Main") p.label + " · " else "") + p.address + " →") { editing = null; onHouse(c.id, p.address) } }
+                }
                 Spacer(Modifier.height(10.dp))
                 CustomerPageButton(vm, c)
             }
