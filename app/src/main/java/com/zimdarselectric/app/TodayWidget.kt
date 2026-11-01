@@ -31,11 +31,72 @@ class TodayWidget : AppWidgetProvider() {
         }
     }
 
+    // Resized on the home screen: show or hide the month calendar.
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, newOptions: android.os.Bundle) {
+        onUpdate(context, manager, intArrayOf(id))
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val step = when (intent.action) { ACTION_PREV -> -1; ACTION_NEXT -> 1; ACTION_THIS_MONTH -> 0; else -> null }
+        if (step == null) { super.onReceive(context, intent); return }
+        val prefs = context.getSharedPreferences("widget", Context.MODE_PRIVATE)
+        prefs.edit().putInt("month_offset", if (step == 0) 0 else prefs.getInt("month_offset", 0) + step).apply()
+        updateAll(context)
+    }
+
     companion object {
         const val EXTRA_ACTION = "widget_action"
         const val ACTION_ON_MY_WAY = "onmyway"
         const val ACTION_NEW_QUOTE = "new_quote"
         const val ACTION_NEW_APPT = "new_appt"
+        /** Open the calendar on a day: "day:2026-11-14". */
+        const val ACTION_DAY = "day:"
+        const val ACTION_PREV = "com.zimdarselectric.app.WIDGET_PREV"
+        const val ACTION_NEXT = "com.zimdarselectric.app.WIDGET_NEXT"
+        const val ACTION_THIS_MONTH = "com.zimdarselectric.app.WIDGET_THIS_MONTH"
+        private val cells = intArrayOf(
+            R.id.w_d0, R.id.w_d1, R.id.w_d2, R.id.w_d3, R.id.w_d4, R.id.w_d5, R.id.w_d6, R.id.w_d7, R.id.w_d8, R.id.w_d9,
+            R.id.w_d10, R.id.w_d11, R.id.w_d12, R.id.w_d13, R.id.w_d14, R.id.w_d15, R.id.w_d16, R.id.w_d17, R.id.w_d18, R.id.w_d19,
+            R.id.w_d20, R.id.w_d21, R.id.w_d22, R.id.w_d23, R.id.w_d24, R.id.w_d25, R.id.w_d26, R.id.w_d27, R.id.w_d28, R.id.w_d29,
+            R.id.w_d30, R.id.w_d31, R.id.w_d32, R.id.w_d33, R.id.w_d34, R.id.w_d35, R.id.w_d36, R.id.w_d37, R.id.w_d38, R.id.w_d39,
+            R.id.w_d40, R.id.w_d41)
+        private val rows = intArrayOf(R.id.w_row0, R.id.w_row1, R.id.w_row2, R.id.w_row3, R.id.w_row4, R.id.w_row5)
+
+        private fun broadcast(context: Context, code: Int, action: String): PendingIntent =
+            PendingIntent.getBroadcast(context, code, Intent(context, TodayWidget::class.java).setAction(action),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        /** The month grid: today filled, days with jobs outlined, tap a day to open it in the app. */
+        private fun drawMonth(context: Context, v: RemoteViews, quotes: List<Quote>) {
+            val offset = context.getSharedPreferences("widget", Context.MODE_PRIVATE).getInt("month_offset", 0)
+            val today = java.time.LocalDate.now()
+            val month = java.time.YearMonth.from(today).plusMonths(offset.toLong())
+            val zone = java.time.ZoneId.systemDefault()
+            val busy = quotes.filter { it.startAt != null && it.canceledAt == null && it.status != Status.DECLINED && it.optionOf == null }
+                .map { java.time.Instant.ofEpochMilli(it.startAt!!).atZone(zone).toLocalDate() }.toSet()
+            v.setTextViewText(R.id.w_month, month.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US)).uppercase() +
+                if (offset != 0) "  ·  TODAY" else "")
+            v.setOnClickPendingIntent(R.id.w_prev, broadcast(context, 30, ACTION_PREV))
+            v.setOnClickPendingIntent(R.id.w_next, broadcast(context, 31, ACTION_NEXT))
+            v.setOnClickPendingIntent(R.id.w_month, broadcast(context, 32, ACTION_THIS_MONTH))
+            val lead = month.atDay(1).dayOfWeek.value % 7 // Sunday first
+            val weeks = (lead + month.lengthOfMonth() + 6) / 7
+            rows.forEachIndexed { i, row -> v.setViewVisibility(row, if (i < weeks) View.VISIBLE else View.GONE) }
+            cells.forEachIndexed { i, cell ->
+                val n = i - lead + 1
+                if (n < 1 || n > month.lengthOfMonth()) {
+                    v.setTextViewText(cell, ""); v.setInt(cell, "setBackgroundResource", R.drawable.widget_day_none)
+                    v.setOnClickPendingIntent(cell, open(context, 40 + i))
+                    return@forEachIndexed
+                }
+                val date = month.atDay(n)
+                val isToday = date == today; val hasJob = date in busy
+                v.setTextViewText(cell, n.toString())
+                v.setInt(cell, "setBackgroundResource", when { isToday -> R.drawable.widget_day_today; hasJob -> R.drawable.widget_day_job; else -> R.drawable.widget_day_none })
+                v.setTextColor(cell, when { isToday -> 0xFF15190A.toInt(); hasJob -> 0xFFFFFFFF.toInt(); date.isBefore(today) -> 0xFF6B7378.toInt(); else -> 0xFFD7DBDD.toInt() })
+                v.setOnClickPendingIntent(cell, open(context, 100 + i, action = ACTION_DAY + date))
+            }
+        }
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         /** Redraw every widget on the home screen (call when jobs change). */
@@ -105,8 +166,14 @@ class TodayWidget : AppWidgetProvider() {
                     if (oLat != 0.0) com.zimdarselectric.app.data.Weather.at(context, oLat, oLon)?.let { it.line + "  ·  now" } else null
                 }
             }.getOrNull()
+            val allQuotes = dao.quotesNow()
             for (id in ids) {
                 val v = RemoteViews(context.packageName, R.layout.widget_today)
+                // The month calendar needs a taller widget; hide it when the widget is short.
+                val h = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
+                val showCal = h == 0 || h >= 300
+                v.setViewVisibility(R.id.w_cal, if (showCal) View.VISIBLE else View.GONE)
+                if (showCal) drawMonth(context, v, allQuotes)
                 v.setTextViewText(R.id.w_weather, weatherLine ?: "")
                 v.setViewVisibility(R.id.w_weather, if (weatherLine == null) View.GONE else View.VISIBLE)
                 v.setTextViewText(R.id.w_date, dayName.format(Date(now)).uppercase())

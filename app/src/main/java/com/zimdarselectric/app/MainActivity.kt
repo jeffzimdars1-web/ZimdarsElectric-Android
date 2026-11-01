@@ -100,6 +100,12 @@ fun App(vm: AppViewModel = viewModel(), openQuote: Long? = null, onOpened: () ->
             TodayWidget.ACTION_NEW_QUOTE -> { nav.goTab(Tab.QUOTES); vm.newQuote { nav.open(Page.EditQuote(it)) }; onWidgetHandled() }
             TodayWidget.ACTION_NEW_APPT -> { nav.goTab(Tab.QUOTES); vm.newAppointment(null) { nav.open(Page.EditQuote(it)) }; onWidgetHandled() }
             TodayWidget.ACTION_ON_MY_WAY -> { if (openQuote != null) vm.autoOnMyWay = openQuote; onWidgetHandled() }
+            else -> if (widgetAction?.startsWith(TodayWidget.ACTION_DAY) == true) {
+                runCatching { java.time.LocalDate.parse(widgetAction.removePrefix(TodayWidget.ACTION_DAY)) }.getOrNull()?.let { d ->
+                    nav.goTab(Tab.QUOTES); vm.quotesUi.calendar = true; vm.quotesUi.month = java.time.YearMonth.from(d); vm.quotesUi.day = d
+                }
+                onWidgetHandled()
+            }
         }
         if (openQuote != null) { nav.goTab(Tab.QUOTES); nav.open(Page.EditQuote(openQuote)); onOpened() }
     }
