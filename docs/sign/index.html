@@ -61,12 +61,12 @@
   .addon { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
   .addon input { width: 24px; height: 24px; flex: none; accent-color: var(--ink); margin-top: 1px; }
   .addon .nm { flex: 1; } .addon .pr { font-weight: 700; white-space: nowrap; }
-  .opts { display: grid; gap: 10px; margin: 8px 0 4px; }
-  .opt { text-align: left; border: 1.5px solid var(--line); background: #fff; padding: 14px; font: inherit; color: var(--ink); cursor: pointer; width: 100%; }
-  .opt.on { border: 2.5px solid var(--ink); box-shadow: inset 6px 0 0 var(--neon); }
-  .opt .ol { font: 700 13px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: #5b636a; }
-  .opt .ot { display: flex; justify-content: space-between; gap: 10px; font-weight: 700; font-size: 17px; margin-top: 4px; }
-  .opt .os { font-size: 14px; color: #5b636a; margin-top: 4px; }
+  .optlist { display: grid; gap: 10px; margin: 8px 0 4px; }
+  .optcard { text-transform: none; letter-spacing: normal; text-align: left; border: 1.5px solid var(--line); background: #fff; padding: 14px; font: inherit; color: var(--ink); cursor: pointer; width: 100%; }
+  .optcard.on { border: 2.5px solid var(--ink); box-shadow: inset 6px 0 0 var(--neon); }
+  .optcard .ol { font: 700 13px var(--cond); letter-spacing: .12em; text-transform: uppercase; color: #5b636a; }
+  .optcard .ot { display: flex; justify-content: space-between; gap: 10px; font-weight: 700; font-size: 17px; margin-top: 4px; }
+  .optcard .os { font-size: 14px; color: #5b636a; margin-top: 4px; }
   .depbox { border: 2px solid var(--ink); padding: 16px; margin-top: 18px; }
   .depbox .amt { font: 700 30px var(--cond); margin: 4px 0 6px; }
   .depbox .btn { margin-top: 10px; display: block; text-align: center; text-decoration: none; }
@@ -172,11 +172,11 @@
       var signedOpt = d.status === "signed";
       m.appendChild(el("h2", { text: signedOpt ? "Option chosen" : "Choose an option" }));
       if (!signedOpt) m.appendChild(el("p", { cls: "muted", style: "font-size:14px;margin:4px 0", text: "Tap one to see its details and price below. You'll sign for the one you pick." }));
-      var box = el("div", { cls: "opts" });
+      var box = el("div", { cls: "optlist" });
       opts.forEach(function (o) {
         if (signedOpt && o.id !== chosenOption) return;
         var on = o.id === chosenOption;
-        var bt = el("button", { cls: "opt" + (on ? " on" : ""), type: "button" }, [
+        var bt = el("button", { cls: "optcard" + (on ? " on" : ""), type: "button" }, [
           el("div", { cls: "ol", text: (on ? "✓ " : "") + (o.label || "Option") }),
           el("div", { cls: "ot" }, [el("span", { text: (o.quote && o.quote.title) || "" }), el("span", { text: money(o.totals && o.totals.total) })]),
           o.summary ? el("div", { cls: "os", text: o.summary }) : null,
@@ -504,7 +504,7 @@
           if (res.ok) {
             var sb = signedBlock(n, res.j.signed_at, sig, b, stv); box.replaceWith(sb);
             var extra = after ? after() : null; if (extra) sb.after(extra);
-            document.querySelectorAll(".opt").forEach(function (o) { o.disabled = true; });
+            document.querySelectorAll(".optcard").forEach(function (o) { o.disabled = true; });
             wirePrint(); window.scrollTo(0, document.body.scrollHeight); return;
           }
           if (res.j.error === "already_signed") { location.reload(); return; }
