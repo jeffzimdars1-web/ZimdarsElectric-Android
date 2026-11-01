@@ -14,6 +14,10 @@
             android:text="" android:textColor="#FFA7ADB2" android:textSize="11sp" android:fontFamily="monospace" />
     </LinearLayout>
 
+    <TextView android:id="@+id/w_alert" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+        android:padding="8dp" android:text="" android:textColor="#FF15190A" android:textSize="13sp" android:textStyle="bold" android:maxLines="2" android:ellipsize="end"
+        android:background="@drawable/widget_alert" android:visibility="gone" />
+
     <TextView android:id="@+id/w_weather" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
         android:text="" android:textColor="#FFF2F3F3" android:textSize="13sp" android:maxLines="2" android:ellipsize="end" />
 

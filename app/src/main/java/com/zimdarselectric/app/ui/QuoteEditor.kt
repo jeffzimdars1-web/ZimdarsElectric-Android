@@ -71,6 +71,8 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Loading…", color = Z.muted) }
         return
     }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(q.id) { com.zimdarselectric.app.TodayWidget.clearAlert(ctx, q.id) }
     if (q.kind == com.zimdarselectric.app.data.Kind.APPT) { AppointmentEditor(vm, q, onBack); return }
     val lines = allLines.filter { it.quoteId == q.id }
     val holdsOthers = holdsByMaterial(quotes, allLines, excludeQuoteId = q.id)

@@ -78,6 +78,7 @@ object InboxImport {
     }
 
     private fun notifyRequest(context: Context, quoteId: Long, d: JSONObject) {
+        com.zimdarselectric.app.TodayWidget.addAlert(context, quoteId)
         if (android.os.Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
             != android.content.pm.PackageManager.PERMISSION_GRANTED) return
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("requests", "Job requests", NotificationManager.IMPORTANCE_HIGH))
@@ -87,6 +88,8 @@ object InboxImport {
         val n = NotificationCompat.Builder(context, "requests").setSmallIcon(R.drawable.ic_stat_bolt)
             .setContentTitle((if (d.optBoolean("urgent")) "URGENT request from " else "New job request from ") + d.optString("name"))
             .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text + "\n" + d.optString("address")))
+            .setPriority(NotificationCompat.PRIORITY_HIGH).setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setDefaults(NotificationCompat.DEFAULT_ALL).setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(open).setAutoCancel(true).build()
         runCatching { NotificationManagerCompat.from(context).notify(600_000 + quoteId.toInt(), n) }
     }

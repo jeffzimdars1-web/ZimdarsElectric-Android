@@ -62,6 +62,20 @@ class TodayWidget : AppWidgetProvider() {
             R.id.w_d40, R.id.w_d41)
         private val rows = intArrayOf(R.id.w_row0, R.id.w_row1, R.id.w_row2, R.id.w_row3, R.id.w_row4, R.id.w_row5)
 
+        /** New booking requests you haven't opened yet: shown at the top of the widget. */
+        fun addAlert(context: Context, quoteId: Long) {
+            val p = context.getSharedPreferences("widget", Context.MODE_PRIVATE)
+            p.edit().putStringSet("alerts", (p.getStringSet("alerts", emptySet()).orEmpty() + quoteId.toString()).toSet()).apply()
+            updateAll(context)
+        }
+        fun clearAlert(context: Context, quoteId: Long) {
+            val p = context.getSharedPreferences("widget", Context.MODE_PRIVATE)
+            val now = p.getStringSet("alerts", emptySet()).orEmpty()
+            if (quoteId.toString() !in now) return
+            p.edit().putStringSet("alerts", (now - quoteId.toString()).toSet()).apply()
+            updateAll(context)
+        }
+
         private fun broadcast(context: Context, code: Int, action: String): PendingIntent =
             PendingIntent.getBroadcast(context, code, Intent(context, TodayWidget::class.java).setAction(action),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -174,6 +188,16 @@ class TodayWidget : AppWidgetProvider() {
                 val showCal = h == 0 || h >= 300
                 v.setViewVisibility(R.id.w_cal, if (showCal) View.VISIBLE else View.GONE)
                 if (showCal) drawMonth(context, v, allQuotes)
+                val alertIds = context.getSharedPreferences("widget", Context.MODE_PRIVATE).getStringSet("alerts", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }
+                val alerts = allQuotes.filter { it.id in alertIds && it.canceledAt == null && it.status == Status.DRAFT }.sortedByDescending { it.createdAt }
+                if (alerts.isEmpty()) v.setViewVisibility(R.id.w_alert, View.GONE) else {
+                    val a = alerts.first()
+                    val urgent = a.title.startsWith("URGENT")
+                    v.setViewVisibility(R.id.w_alert, View.VISIBLE)
+                    v.setTextViewText(R.id.w_alert, (if (urgent) "🔔 URGENT REQUEST · " else "🔔 NEW REQUEST · ") + a.customerName.ifBlank { "Someone" } +
+                        "\n" + a.title.removePrefix("URGENT · ") + if (alerts.size > 1) "   (+${alerts.size - 1} more)" else "")
+                    v.setOnClickPendingIntent(R.id.w_alert, open(context, 20, quoteId = a.id))
+                }
                 v.setTextViewText(R.id.w_weather, weatherLine ?: "")
                 v.setViewVisibility(R.id.w_weather, if (weatherLine == null) View.GONE else View.VISIBLE)
                 v.setTextViewText(R.id.w_date, dayName.format(Date(now)).uppercase())
