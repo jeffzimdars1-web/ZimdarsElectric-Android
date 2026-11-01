@@ -203,8 +203,8 @@ object QuotePdf {
             }
 
             val groups = if (q.jobType == JobType.BOTH)
-                listOf("Materials · new installation" to lines.filter { !it.repair }, "Materials · repair" to lines.filter { it.repair })
-            else listOf("Materials" to lines)
+                listOf("Materials · new installation" to lines.filter { !it.repair && !it.optional }, "Materials · repair" to lines.filter { it.repair && !it.optional })
+            else listOf("Materials" to lines.filter { !it.optional })
             for ((title, group) in groups) if (group.isNotEmpty()) {
                 section(title)
                 val xQty = W - M - 190f; val xEach = W - M - 95f; val xAmt = W - M
@@ -230,10 +230,26 @@ object QuotePdf {
                 continuing = null
             }
 
+            val addOns = lines.filter { it.optional }
+            if (addOns.isNotEmpty()) {
+                section("Optional add-ons", 50f)
+                para(if (signed) "Add-ons the customer picked are in the total below." else "Not in the total. Pick any you want when you sign; your total updates as you check them.", small, after = 6f)
+                addOns.forEach { l ->
+                    val nl = layout(l.name, body, W - 2 * M - 200f)
+                    val h = nl.height + 9f
+                    need(h)
+                    draw(nl, M, y)
+                    val state = when (l.addOnState) { 1 -> "ADDED"; 2 -> "NO THANKS"; else -> if (signed) "NO THANKS" else "OPTIONAL" }
+                    c.drawText(state, W - M - 95f, y + 10f, label.right())
+                    c.drawText("+" + money(linePrice(q, l)), W - M, y + 10f, body.right())
+                    y += h; c.drawLine(M, y - 4f, W - M, y - 4f, line)
+                }
+            }
+
             val rows = buildList {
                 if (q.jobType == JobType.BOTH) {
-                    val instMat = lines.filter { !it.repair }.sumOf { it.qty * it.unitCost } * factor
-                    val repMat = lines.filter { it.repair }.sumOf { it.qty * it.unitCost } * factor
+                    val instMat = lines.filter { !it.repair && it.counts }.sumOf { linePrice(q, it) }
+                    val repMat = lines.filter { it.repair && it.counts }.sumOf { linePrice(q, it) }
                     add("Install materials" to money(instMat))
                     add("Install labor (${qtyText(q.laborHours)} hr)" to money(q.laborHours * q.laborRate))
                     add("New installation subtotal" to money(t.installPart))
@@ -332,9 +348,9 @@ object QuotePdf {
                 y += 13f; c.drawLine(M, y, W - M, y, line); y += 5f
             }
             header(); continuing = header
-            lines.forEach { l ->
+            lines.filter { !(it.optional && it.addOnState == 2) }.forEach { l ->
                 val m = materials.firstOrNull { it.id == l.materialId }
-                val nl = layout(l.name + (m?.spec?.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: ""), body, xQty - M - 80f)
+                val nl = layout(l.name + (if (l.optional && l.addOnState == 0) "  (add-on, only if picked)" else if (l.optional) "  (add-on picked)" else "") + (m?.spec?.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: ""), body, xQty - M - 80f)
                 val h = maxOf(nl.height.toFloat(), 14f) + 10f
                 need(h)
                 c.drawRect(M, y + 1f, M + 10f, y + 11f, ink)
@@ -345,6 +361,17 @@ object QuotePdf {
             }
             if (lines.isEmpty()) para("No materials on this quote.", small)
             continuing = null
+
+            Checklists.parse(q.checklist).forEach { cl ->
+                section("Checklist · " + cl.title, 30f)
+                cl.items.forEach { item ->
+                    need(18f)
+                    c.drawRect(M, y + 1f, M + 10f, y + 11f, ink)
+                    if (item.done) c.drawText("✓", M + 1.5f, y + 10f, strong)
+                    c.drawText(item.text, M + 20f, y + 10f, body)
+                    y += 18f
+                }
+            }
 
             section("Money")
             facts(listOf(

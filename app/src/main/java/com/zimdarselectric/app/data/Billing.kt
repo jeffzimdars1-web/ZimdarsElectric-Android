@@ -44,10 +44,22 @@ object Billing {
             .put("invoice", JSONObject().put("number", q.number).put("title", q.title).put("site", q.site).put("date", done)
                 .put("total", r2(total)).put("paid", r2(q.paidAmount)).put("due", r2(maxOf(0.0, total - q.paidAmount)))
                 .put("terms", s.paymentTerms).put("parts", parts))
-            .put("pay", JSONObject().put("venmo", s.venmo).put("zelle", s.zelle).put("note", s.payNote).put("phone", s.phone))
+            .put("pay", JSONObject().put("venmo", s.venmo).put("zelle", s.zelle).put("note", s.payNote).put("phone", s.phone)
+                .put("card", cardLink(s, maxOf(0.0, total - q.paidAmount)))
+                .put("financing", if (s.financingLink.isNotBlank() && total >= s.financingMin) s.financingLink.trim() else ""))
     }
 
     private fun biz(s: Settings) = s.businessName.trim().ifBlank { "Your electrician" }
+
+    /** Your card link with the amount filled in where it says {amount} (e.g. paypal.me/you/{amount}). */
+    fun cardLink(s: Settings, amount: Double): String =
+        s.cardPayLink.trim().replace("{amount}", "%.2f".format(java.util.Locale.US, amount))
+
+    fun followUpText(q: Quote, s: Settings, total: Double, second: Boolean): String {
+        val what = q.title.ifBlank { "the electrical work" }
+        return if (!second) "${biz(s)}: Just checking in on your quote for $what (${q.number}, ${money(total)}). Any questions? I'm happy to help. You can review and sign here: ${q.signUrl}"
+        else "${biz(s)}: Following up one last time on your quote for $what (${q.number}). If you'd like to go ahead, you can sign here: ${q.signUrl}  If now isn't the right time, no problem at all."
+    }
     private fun money(v: Double) = java.text.NumberFormat.getCurrencyInstance(Locale.US).format(v)
 
     fun invoiceText(q: Quote, s: Settings, due: Double, url: String) =
@@ -82,6 +94,17 @@ object Billing {
             if (due <= 0.5) continue
             CustomerTexts.sendText(context, q, customer, reminderText(q, s, due, q.invoiceUrl))
             dao.updateQuote(q.copy(invoiceRemindedAt = now))
+        }
+        // Quote follow-ups: unsigned quotes get a friendly nudge after N days, and one more N days later.
+        if (s.followUpOn) for (q in all) {
+            if (q.kind != Kind.QUOTE || q.signUrl.isBlank() || q.signToken.isBlank() || q.signedAt != null) continue
+            if (q.status != Status.SENT || q.followUps >= 2) continue
+            val since = q.lastFollowUpAt ?: q.sentAt ?: continue
+            if (now - since < s.followUpDays * 86_400_000L) continue
+            val customer = q.customerId?.let { dao.customer(it) }
+            val total = computeTotals(q, lines.filter { it.quoteId == q.id }, s).total
+            CustomerTexts.sendText(context, q, customer, followUpText(q, s, total, second = q.followUps >= 1))
+            dao.updateQuote(q.copy(followUps = q.followUps + 1, lastFollowUpAt = now))
         }
         // Review request: the day after the job is done (within a week).
         if (s.reviewUrl.isNotBlank()) for (q in all) {

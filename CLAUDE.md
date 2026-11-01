@@ -9,3 +9,7 @@
 - Insert a row into Supabase `public.app_inbox` (kind `'job'`, `data` jsonb). The app pulls pending rows at startup (edge function `inbox`, needs the app key), turns each into a quote, then the row's data is cleared.
 - `data` shape: `{customer:{name, phone?, email?, address?}, propertyLabel? (inside customer), quote:{number? (update that quote instead of making a new one), title, site, jobType INSTALL|REPAIR|BOTH, notes, repairNotes, privateNote (Jeff-only note), laborHours, repairHours, laborRate, taxRatePct, markupPct, miles, startAt(ms), hasTime, scheduled, status DRAFT|SENT|APPROVED|DONE, completedAt(ms), paidAmount, paidAt(ms)}, lines:[{name, unit, qty, unitCost?, repair?}]}`. Lines are added to existing ones and matched to stock by name.
 - Customer data only passes through; don't leave rows behind.
+
+## Booking requests and customer pages
+- Public booking page `docs/book/` posts to edge function `book` (rate-limited, honeypot, up to 3 photos). It drops a row in `app_inbox` with kind `'request'`; the app (`InboxImport`) turns it into a draft appointment + customer and notifies Jeff. The business name/phone shown on the page comes from `app_content` key `'business'`, pushed by the app.
+- Customer pages: `docs/portal/` reads a `sign_requests` row of kind `'portal'` (created/updated by the app via `sign` create/update). Payload lists the customer's appointments, quotes, invoices and ST-124 links.

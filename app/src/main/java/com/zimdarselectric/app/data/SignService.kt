@@ -70,7 +70,7 @@ object SignService {
                 .put("validUntil", q.createdAt + s.quoteValidDays * 86_400_000L).put("title", q.title).put("site", q.site)
                 .put("jobType", q.jobType).put("scheduled", q.scheduled).put("notes", q.notes).put("repairNotes", q.repairNotes))
             .put("lines", JSONArray().apply {
-                lines.forEach { l ->
+                lines.filter { !it.optional }.forEach { l ->
                     put(JSONObject().put("name", l.name).put("qty", l.qty).put("unit", l.unit)
                         .put("price", r2(l.unitCost * factor)).put("total", r2(l.qty * l.unitCost * factor)).put("repair", l.repair))
                 }
@@ -83,6 +83,13 @@ object SignService {
             .put("terms", JSONObject().put("rates", s.chargeNote).put("payment", s.paymentTerms).put("warranty", s.warranty))
             .put("notices", JSONArray(contractNotices(s)))
             .apply {
+                // Optional add-ons the customer can check (only ones not already decided).
+                val offers = lines.filter { it.optional && it.addOnState == 0 }
+                if (offers.isNotEmpty()) put("addons", JSONArray().apply {
+                    offers.forEach { l -> put(JSONObject().put("id", l.id.toInt()).put("name", l.name).put("price", r2(linePrice(q, l))).put("taxable", isRepairLine(q, l))) }
+                })
+                if (s.financingLink.isNotBlank() && t.total >= s.financingMin)
+                    put("financing", JSONObject().put("url", s.financingLink.trim()).put("text", "See monthly payment options →"))
                 if (q.needsSt124) put("st124", st124Info(q))
                 if (changeOf != null) getJSONObject("quote").put("changeOf", changeOf)
             }
@@ -127,6 +134,11 @@ object SignService {
     /** Moves the appointment on the customer's page to a new time (stays confirmed). */
     suspend fun retime(key: String, token: String, start: Long, hasTime: Boolean) = withContext(Dispatchers.IO) {
         call(key, JSONObject().put("action", "retime").put("t", token).put("start", start).put("hasTime", hasTime))
+    }
+
+    /** Replaces what a page shows, keeping its link (customer pages). Returns the link. */
+    suspend fun update(key: String, token: String, payload: JSONObject): String = withContext(Dispatchers.IO) {
+        call(key, JSONObject().put("action", "update").put("t", token).put("payload", payload)).getString("url")
     }
 
     /** Shows "Paid" on the invoice page. */
@@ -204,6 +216,11 @@ object SignService {
                         signaturePath = sig?.absolutePath ?: "",
                         status = if (q.status in setOf(Status.DRAFT, Status.SENT)) Status.APPROVED else q.status,
                     )
+                    // Record which add-ons they picked (the rest are marked "passed").
+                    val picks = item.optJSONArray("addons")?.let { a -> (0 until a.length()).map { a.optLong(it) }.toSet() } ?: emptySet()
+                    dao.linesFor(q.id).filter { it.optional && it.addOnState == 0 }.forEach { l ->
+                        dao.updateLine(l.copy(addOnState = if (l.id in picks) 1 else 2))
+                    }
                     if (item.optJSONObject("st124") != null) {
                         val path = makeSt124(updated, item, sig, signedAt)
                         if (path.isNotBlank()) updated = updated.copy(st124SignedAt = signedAt, st124Path = path)
@@ -327,6 +344,7 @@ object SignService {
 
 class SignWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
+        runCatching { InboxImport.pullAll(applicationContext) } // booking-page requests (notifies by itself)
         SignService.notifySigned(applicationContext, SignService.sync(applicationContext))
         Result.success()
     } catch (e: Exception) {

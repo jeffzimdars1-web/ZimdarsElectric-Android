@@ -6,6 +6,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -225,5 +228,49 @@ fun InvoiceSection(vm: AppViewModel, q: Quote, quotes: List<Quote>, lines: List<
         else Row(Modifier.fillMaxWidth().clickable { vm.saveQuote(q.copy(askReview = !q.askReview)) }.padding(vertical = 8.dp)) {
             Text((if (q.askReview) "✓  " else "○  ") + "Text a Google review request the day after the job is done", color = Z.text, fontSize = 14.sp)
         }
+    }
+}
+
+// ---------------- Checklists ----------------
+
+@Composable
+fun ChecklistSection(q: Quote, locked: Boolean, onChange: (String) -> Unit) {
+    val lists = remember(q.checklist) { com.zimdarselectric.app.data.Checklists.parse(q.checklist) }
+    var picking by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<Int?>(null) }
+    if (lists.isEmpty()) Text("Add a checklist so nothing gets missed: safety at the start, panel inspection, clean-up at the end. It prints on the job copy.", color = Z.muted, fontSize = 13.sp)
+    lists.forEachIndexed { li, l ->
+        val done = l.items.count { it.done }
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text(l.title, color = Z.text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Label("$done / ${l.items.size}", color = if (done == l.items.size) Z.ok else Z.muted)
+            if (!locked) Label("Remove", color = Z.warn, modifier = Modifier.clickable { removing = li }.padding(start = 12.dp))
+        }
+        l.items.forEachIndexed { ii, it ->
+            androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().clickable(enabled = !locked) { onChange(com.zimdarselectric.app.data.Checklists.toggle(q.checklist, li, ii)) }
+                .padding(vertical = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Box(Modifier.size(22.dp).border(1.5.dp, if (it.done) Z.ok else Z.muted).background(if (it.done) Z.ok else Z.bg), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                    if (it.done) Text("✓", color = Z.bg, fontSize = 14.sp)
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(it.text, color = if (it.done) Z.muted else Z.text, fontSize = 15.sp)
+            }
+        }
+        Divider()
+    }
+    if (!locked) {
+        Spacer(Modifier.height(10.dp))
+        GhostButton("+ Add checklist", Modifier.fillMaxWidth()) { picking = true }
+    }
+    if (picking) ZDialog("Add checklist", { picking = false }, confirm = "Close" to { picking = false }) {
+        com.zimdarselectric.app.data.Checklists.templates.keys.forEach { t ->
+            Text(t, color = Z.text, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().clickable { onChange(com.zimdarselectric.app.data.Checklists.add(q.checklist, t)); picking = false }.padding(vertical = 12.dp))
+            Divider()
+        }
+    }
+    removing?.let { i ->
+        ZDialog("Remove “${lists.getOrNull(i)?.title}”?", { removing = null },
+            confirm = "Remove" to { onChange(com.zimdarselectric.app.data.Checklists.remove(q.checklist, i)); removing = null },
+            dismiss = "Keep" to { removing = null }) {}
     }
 }

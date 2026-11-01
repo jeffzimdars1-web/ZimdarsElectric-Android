@@ -19,6 +19,7 @@ import com.zimdarselectric.app.data.Status
 import com.zimdarselectric.app.data.StockMove
 import com.zimdarselectric.app.data.Trip
 import com.zimdarselectric.app.data.holdsByMaterial
+import com.zimdarselectric.app.data.computeTotals
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -75,6 +76,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { SignService.scheduleBackgroundCheck(app) }
         runCatching { com.zimdarselectric.app.data.Backup.schedule(app) }
         runCatching { com.zimdarselectric.app.data.Billing.schedule(app) }
+        // New booking requests show up within a couple of minutes while the app is open.
+        viewModelScope.launch { while (true) { kotlinx.coroutines.delay(120_000); pullInbox() } }
+        // Keep the booking page's name and phone in step with Settings.
+        viewModelScope.launch {
+            dao.settings().collect { s -> if (s != null && s.signKey.isNotBlank()) { kotlinx.coroutines.delay(1500); runCatching { pushProfile(s) } } }
+        }
         // Keep job reminders matched to quote dates and reminder settings.
         viewModelScope.launch {
             combine(dao.quotes(), dao.settings()) { q, s -> q to (s ?: Settings()) }
@@ -91,6 +98,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val s = dao.settingsNow() ?: Settings()
         if (s.signKey.isBlank()) { onDone(null, "Add your signing key in Settings first."); return@launch }
         val current = dao.quote(q.id) ?: return@launch
+        // Every send is a fresh choice of add-ons.
+        dao.linesFor(q.id).filter { it.optional && it.addOnState != 0 }.forEach { dao.updateLine(it.copy(addOnState = 0)) }
         val lines = dao.linesFor(q.id)
         val customer = current.customerId?.let { dao.customer(it) }
         try {
@@ -106,6 +115,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 signedAt = null, signerName = "", signerIp = "", signaturePath = "",
                 status = if (latest.status == Status.DRAFT || (resign && latest.status == Status.APPROVED)) Status.SENT else latest.status))
             SignService.scheduleBackgroundCheck(app)
+            refreshPortal(current.customerId)
             onDone(link.url, null)
         } catch (e: Exception) { onDone(null, friendly(e)) }
     }
@@ -284,56 +294,84 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val inboxAdded: kotlinx.coroutines.flow.StateFlow<List<Pair<Long, String>>> = _inboxAdded
     fun dismissInbox() { _inboxAdded.value = emptyList() }
 
-    /** Picks up jobs Claude wrote up for you and adds them as quotes (or updates the quote number given). */
+    /** Picks up jobs Claude wrote up and requests from your booking page. */
     fun pullInbox() = viewModelScope.launch {
-        val s0 = dao.settingsNow() ?: return@launch
-        val items = runCatching { com.zimdarselectric.app.data.Inbox.pending(s0.signKey) }.getOrDefault(emptyList())
-        for (item in items) {
-            if (item.kind != "job") continue
-            val added = runCatching { importJob(item.data) }.getOrNull() ?: continue
-            com.zimdarselectric.app.data.Inbox.done(s0.signKey, item.id)
-            _inboxAdded.value = _inboxAdded.value + added
+        val added = runCatching { com.zimdarselectric.app.data.InboxImport.pullAll(app) }.getOrDefault(emptyList())
+        if (added.isNotEmpty()) _inboxAdded.value = _inboxAdded.value + added
+    }
+
+    private var lastProfile = ""
+    private suspend fun pushProfile(s: Settings) {
+        val p = org.json.JSONObject().put("name", s.businessName).put("phone", s.phone).put("owner", s.ownerName)
+            .put("area", "Licensed electrician · Mohawk Valley")
+        if (p.toString() == lastProfile) return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val c = (java.net.URL("https://dmaslbfwpsfnnnyushbc.supabase.co/functions/v1/book").openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "POST"; doOutput = true; connectTimeout = 10000; readTimeout = 10000
+                setRequestProperty("Content-Type", "application/json"); setRequestProperty("x-app-key", s.signKey.trim())
+            }
+            try { c.outputStream.use { it.write(org.json.JSONObject().put("action", "profile").put("profile", p).toString().toByteArray()) }; if (c.responseCode == 200) lastProfile = p.toString() }
+            finally { c.disconnect() }
         }
     }
 
-    private suspend fun importJob(d: org.json.JSONObject): Pair<Long, String> {
-        fun digits(p: String) = p.filter(Char::isDigit).takeLast(10)
-        val c = d.optJSONObject("customer") ?: org.json.JSONObject()
-        val qo = d.optJSONObject("quote") ?: org.json.JSONObject()
-        val name = c.optString("name").trim()
-        val phone = c.optString("phone").trim()
-        val site = qo.optString("site").trim()
-        // Customer: match by phone, then name; otherwise add them.
-        var cust = dao.customersNow().firstOrNull { (phone.isNotBlank() && digits(it.phone) == digits(phone)) } ?: dao.customersNow().firstOrNull { name.isNotBlank() && it.name.equals(name, true) }
-        if (cust == null && name.isNotBlank()) {
-            val nc = Customer(name = name, phone = phone, email = c.optString("email"), address = c.optString("address").ifBlank { site })
-            cust = nc.copy(id = dao.insertCustomer(nc))
-        }
-        if (cust != null && site.isNotBlank() && cust.allProperties.none { it.address.equals(site, true) }) {
-            cust = if (cust.address.isBlank()) cust.copy(address = site)
-                   else cust.withProperties(cust.otherProperties + Customer.Property(c.optString("propertyLabel"), site))
-            dao.updateCustomer(cust)
-        }
-        // Quote: update the one with this number, or make a new one.
-        val number = qo.optString("number").trim()
-        val existing = if (number.isNotBlank()) dao.quotesNow().firstOrNull { it.number.equals(number, true) } else null
+    // ---------- Customer page ----------
+    /** Builds and publishes a customer's page (keeps the same link once made). Returns the link. */
+    fun shareCustomerPage(c: Customer, onDone: (url: String?, error: String?) -> Unit) = viewModelScope.launch {
         val s = dao.settingsNow() ?: Settings()
-        val base = existing ?: Quote(number = "Q-" + s.nextQuoteNo.toString().padStart(4, '0'), laborRate = s.laborRate, markupPct = s.markupPct, taxRatePct = s.repairTaxPct)
-        val q = com.zimdarselectric.app.data.Inbox.applyQuote(base, qo).copy(customerId = cust?.id ?: base.customerId, customerName = cust?.name ?: base.customerName)
-        val id = if (existing != null) { dao.updateQuote(q); existing.id } else { val nid = dao.insertQuote(q); dao.saveSettings(s.copy(nextQuoteNo = s.nextQuoteNo + 1)); nid }
-        // Materials (added to what's there; matched to your stock by name).
-        val lines = d.optJSONArray("lines")
-        if (lines != null && lines.length() > 0) {
-            fun norm(x: String) = x.lowercase().replace(Regex("[^a-z0-9/.]+"), " ").trim()
-            val stock = dao.materialsNow()
-            for (i in 0 until lines.length()) {
-                val l = lines.getJSONObject(i)
-                val m = stock.firstOrNull { norm(it.name) == norm(l.optString("name")) }
-                dao.insertLine(QuoteLine(quoteId = id, materialId = m?.id, name = m?.name ?: l.optString("name"), unit = l.optString("unit", m?.unit ?: "ea"),
-                    qty = l.optDouble("qty", 1.0), unitCost = if (l.has("unitCost")) l.getDouble("unitCost") else m?.cost ?: 0.0, repair = l.optBoolean("repair")))
-            }
+        if (s.signKey.isBlank()) { onDone(null, "Add your signing key in Settings first."); return@launch }
+        try { onDone(publishPortal(c.id), null) } catch (e: Exception) { onDone(null, friendly(e)) }
+    }
+
+    /** Refreshes a customer's page if they have one (after you send them something). */
+    fun refreshPortal(customerId: Long?) = viewModelScope.launch {
+        val c = customerId?.let { dao.customer(it) } ?: return@launch
+        if (c.portalToken.isNotBlank()) runCatching { publishPortal(c.id) }
+    }
+
+    private suspend fun publishPortal(customerId: Long): String {
+        val s = dao.settingsNow() ?: Settings()
+        val c = dao.customer(customerId) ?: throw IllegalStateException("Customer not found")
+        val all = dao.quotesNow().filter { it.customerId == c.id }
+        val lines = dao.allLinesNow()
+        val items = org.json.JSONArray()
+        fun status(q: Quote) = when {
+            q.canceledAt != null -> "Canceled"
+            q.kind == com.zimdarselectric.app.data.Kind.APPT -> if (q.confirmedAt != null) "Confirmed" else if (q.signUrl.isNotBlank()) "Waiting for you" else "Scheduled"
+            q.status == Status.DONE -> "Done"
+            q.signedAt != null -> "Signed"
+            q.status == Status.APPROVED -> "Approved"
+            q.signUrl.isNotBlank() -> "Waiting for you"
+            else -> "Sent"
         }
-        return id to "${q.number} · ${q.customerName.ifBlank { q.title }}"
+        all.filter { it.signUrl.isNotBlank() || it.status == Status.DONE || it.kind == com.zimdarselectric.app.data.Kind.APPT && it.startAt != null }
+            .sortedByDescending { it.startAt ?: it.createdAt }.forEach { q ->
+                val appt = q.kind == com.zimdarselectric.app.data.Kind.APPT
+                items.put(org.json.JSONObject().put("type", if (appt) "appt" else "quote").put("number", q.number).put("title", q.title.ifBlank { if (appt) "Service visit" else "Electrical work" })
+                    .put("site", q.site).put("date", q.startAt ?: q.createdAt).put("hasTime", appt && q.hasTime).put("status", status(q))
+                    .put("total", if (appt) 0.0 else computeTotals(q, lines.filter { it.quoteId == q.id }, s).total).put("url", q.signUrl))
+            }
+        all.filter { it.invoiceUrl.isNotBlank() }.forEach { q ->
+            val due = com.zimdarselectric.app.data.Billing.invoiceTotal(q, all.filter { it.parentId == q.id }, lines, s)
+            items.put(org.json.JSONObject().put("type", "invoice").put("number", q.number).put("title", q.title).put("date", q.invoiceSentAt ?: 0L)
+                .put("status", if (q.paidAt != null) "Paid" else "Due").put("total", due).put("url", q.invoiceUrl))
+        }
+        all.filter { it.st124Path.isNotBlank() || it.st124Url.isNotBlank() }.forEach { q ->
+            items.put(org.json.JSONObject().put("type", "st124").put("number", q.number).put("title", "Form ST-124 · " + q.title).put("date", q.st124SignedAt ?: q.st124SentAt ?: 0L)
+                .put("status", if (q.st124SignedAt != null) "Signed" else "Waiting for you").put("url", q.st124Url))
+        }
+        val payload = org.json.JSONObject()
+            .put("business", org.json.JSONObject().put("name", s.businessName).put("phone", s.phone).put("email", s.email).put("address", s.address))
+            .put("customer", org.json.JSONObject().put("name", c.name))
+            .put("items", items).put("properties", org.json.JSONArray(c.allProperties.map { it.address }))
+            .put("book", com.zimdarselectric.app.data.MissedCalls.BOOK_URL).put("updated", System.currentTimeMillis())
+        val key = s.signKey.trim()
+        return if (c.portalToken.isNotBlank()) SignService.update(key, c.portalToken, payload)
+        else {
+            val link = SignService.create(key, payload, "C-${c.id}", null, kind = "portal")
+            dao.updateCustomer(c.copy(portalToken = link.token, portalUrl = link.url))
+            link.url
+        }
     }
 
     // ---------- Quotes ----------
@@ -388,7 +426,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val texted = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 com.zimdarselectric.app.data.CustomerTexts.sendText(app, latest, c, com.zimdarselectric.app.data.CustomerTexts.confirmation(latest, s, link.url))
             }
-            onDone(link.url, null, texted)
+            refreshPortal(q.customerId); onDone(link.url, null, texted)
         } catch (e: Exception) { onDone(null, friendly(e), false) }
     }
 
@@ -465,6 +503,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dao.updateQuote(q.copy(paidAmount = amount, paidAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
         val key = dao.settingsNow()?.signKey.orEmpty()
         if (q.invoiceToken.isNotBlank() && key.isNotBlank()) runCatching { SignService.markInvoicePaid(key, q.invoiceToken) }
+        refreshPortal(q.customerId)
     }
 
     /** Cancels an appointment: closes their page with a "canceled" notice, stops reminders, optionally texts them. */
@@ -510,7 +549,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val text = "${s.businessName}: Please sign New York State Form ST-124 for the work at ${current.site.ifBlank { "your property" }}. It confirms the new installation is a capital improvement, so no sales tax is charged on it. Sign here: ${link.url}"
             val texted = com.zimdarselectric.app.data.CustomerTexts.canSend(app) && com.zimdarselectric.app.data.CustomerTexts.sendText(app, current, customer, text)
             SignService.scheduleBackgroundCheck(app)
-            onDone(link.url, null, texted)
+            refreshPortal(q.customerId); onDone(link.url, null, texted)
         } catch (e: Exception) { onDone(null, friendly(e), false) }
     }
 
@@ -550,7 +589,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             dao.quote(q.id)?.let { dao.updateQuote(it.copy(invoiceToken = link.token, invoiceUrl = link.url, invoiceSentAt = System.currentTimeMillis(), invoiceRemindedAt = null)) }
             val texted = com.zimdarselectric.app.data.CustomerTexts.canSend(app) &&
                 com.zimdarselectric.app.data.CustomerTexts.sendText(app, current, customer, com.zimdarselectric.app.data.Billing.invoiceText(current, s, due, link.url))
-            onDone(link.url, null, texted)
+            refreshPortal(q.customerId); onDone(link.url, null, texted)
         } catch (e: Exception) { onDone(null, friendly(e), false) }
     }
 

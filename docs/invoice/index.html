@@ -137,6 +137,12 @@
         var href = "https://venmo.com/" + encodeURIComponent(user) + "?txn=pay&amount=" + (Math.round(inv.due * 100) / 100) + "&note=" + encodeURIComponent("Invoice " + (inv.number || ""));
         box.appendChild(el("a", { cls: "btn btn-main", style: "margin-top:0", href: href, text: "Pay " + money(inv.due) + " with Venmo" }));
       }
+      if (pay.card) {
+        box.appendChild(el("a", { cls: "btn btn-main", style: "margin-top:0", href: pay.card, target: "_blank", rel: "noopener", text: "Pay " + money(inv.due) + " by card" }));
+      }
+      if (pay.financing) {
+        box.appendChild(el("a", { cls: "btn btn-line", href: pay.financing, target: "_blank", rel: "noopener", text: "Pay over time (financing)" }));
+      }
       if (pay.zelle) {
         var z = el("button", { cls: "btn btn-line", type: "button", text: "Zelle: " + pay.zelle + " · tap to copy" });
         z.addEventListener("click", function () {

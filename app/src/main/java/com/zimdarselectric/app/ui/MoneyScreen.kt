@@ -28,6 +28,7 @@ import com.zimdarselectric.app.data.MoneyCalc
 import com.zimdarselectric.app.data.Status
 import com.zimdarselectric.app.data.money
 import com.zimdarselectric.app.data.qtyText
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -116,7 +117,40 @@ fun MoneyScreen(vm: AppViewModel, onBack: () -> Unit, onOpenQuote: (Long) -> Uni
                         color = Z.muted, fontSize = 12.sp)
                 }
             }
+            SectionHeader("BOOKS", "For your accountant")
+            AccountantExport(year)
             Spacer(Modifier.height(40.dp))
+        }
+    }
+}
+
+/** Zips the year's income, expenses, mileage (spreadsheet files), a summary and receipt copies, then opens the Share menu. */
+@Composable
+private fun AccountantExport(thisYear: Int) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var pick by remember { mutableStateOf(thisYear) }
+    var receipts by remember { mutableStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+    Text("Makes one .zip with income, expenses and mileage as spreadsheet files (open in Excel or Google Sheets), a summary, and copies of your receipts. Send it to your accountant by email or text.",
+        color = Z.muted, fontSize = 13.sp)
+    Spacer(Modifier.height(8.dp))
+    Segmented(listOf((thisYear - 1).toString(), thisYear.toString()), if (pick == thisYear) 1 else 0) { pick = if (it == 1) thisYear else thisYear - 1 }
+    Spacer(Modifier.height(8.dp))
+    Segmented(listOf("With receipts", "No receipts"), receipts) { receipts = it }
+    Spacer(Modifier.height(10.dp))
+    NeonButton(if (busy) "Making…" else "Send $pick books", Modifier.fillMaxWidth()) {
+        if (busy) return@NeonButton
+        busy = true
+        scope.launch {
+            val f = runCatching { com.zimdarselectric.app.data.Export.build(context, pick, receipts == 0) }.getOrNull()
+            busy = false
+            if (f == null) { android.widget.Toast.makeText(context, "Couldn't make the file", android.widget.Toast.LENGTH_SHORT).show(); return@launch }
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+            val i = android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/zip")
+                .putExtra(android.content.Intent.EXTRA_STREAM, uri).putExtra(android.content.Intent.EXTRA_SUBJECT, f.nameWithoutExtension)
+                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), "Send books")
+            runCatching { context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
     }
 }

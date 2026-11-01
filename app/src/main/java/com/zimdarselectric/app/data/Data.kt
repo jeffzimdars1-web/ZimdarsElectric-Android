@@ -54,6 +54,9 @@ data class Customer(
     val createdAt: Long = System.currentTimeMillis(),
     /** Other properties they own, one per line: "name<TAB>address" (e.g. "Remsen rental	123 Main St"). */
     @ColumnInfo(defaultValue = "") val properties: String = "",
+    /** Their customer page (all their quotes, visits, invoices). */
+    @ColumnInfo(defaultValue = "") val portalToken: String = "",
+    @ColumnInfo(defaultValue = "") val portalUrl: String = "",
 ) {
     data class Property(val label: String, val address: String)
 
@@ -182,6 +185,11 @@ data class Quote(
     /** You canceled this appointment (kept for history; reminders stop). */
     val canceledAt: Long? = null,
     @ColumnInfo(defaultValue = "") val cancelReason: String = "",
+    /** Automatic "checking in on your quote" texts sent so far. */
+    @ColumnInfo(defaultValue = "0") val followUps: Int = 0,
+    val lastFollowUpAt: Long? = null,
+    /** Job checklists as JSON: [{title, items:[{t, done}]}]. */
+    @ColumnInfo(defaultValue = "") val checklist: String = "",
 ) {
     /** A new-time request that came in after the last confirmation was sent and hasn't been handled. */
     val hasRescheduleRequest: Boolean get() = rescheduleRequestedAt != null && rescheduleText.isNotBlank() && rescheduleRequestedAt > (sentAt ?: 0L)
@@ -206,7 +214,16 @@ data class QuoteLine(
     val unitCost: Double = 0.0,
     /** On an install + repair job: this item is for the repair part (taxed). */
     @ColumnInfo(defaultValue = "0") val repair: Boolean = false,
-)
+    /** Optional add-on the customer can check on the signing page. */
+    @ColumnInfo(defaultValue = "0") val optional: Boolean = false,
+    /** Installed price the customer sees for the add-on. 0 = materials price with markup. */
+    @ColumnInfo(defaultValue = "0") val addOnPrice: Double = 0.0,
+    /** Add-on choice: 0 = not decided yet, 1 = customer added it, 2 = customer passed. */
+    @ColumnInfo(defaultValue = "0") val addOnState: Int = 0,
+) {
+    /** Counts toward the price and stock: regular items, and add-ons the customer picked. */
+    val counts: Boolean get() = !optional || addOnState == 1
+}
 
 /** One business drive for the mileage log. */
 @Entity
@@ -313,6 +330,20 @@ data class Settings(
     @ColumnInfo(defaultValue = "") val coaNumber: String = "",
     /** Your own signature (drawn once), for the contractor line on ST-124. */
     @ColumnInfo(defaultValue = "") val ownerSignaturePath: String = "",
+    /** Nudge unsigned quotes by text after this many days (twice at most). */
+    @ColumnInfo(defaultValue = "1") val followUpOn: Boolean = true,
+    @ColumnInfo(defaultValue = "3") val followUpDays: Int = 3,
+    /** Text back calls you miss. */
+    @ColumnInfo(defaultValue = "0") val missedCallOn: Boolean = false,
+    /** Also text back customers (otherwise only numbers not in your phone contacts). */
+    @ColumnInfo(defaultValue = "1") val missedCallCustomers: Boolean = true,
+    /** Your own missed-call message. Blank = the standard one. */
+    @ColumnInfo(defaultValue = "") val missedCallText: String = "",
+    /** A pay-by-card link (Square, PayPal.me…). {amount} is replaced with the amount due. */
+    @ColumnInfo(defaultValue = "") val cardPayLink: String = "",
+    /** Customer financing application link, shown on quotes at or above [financingMin]. */
+    @ColumnInfo(defaultValue = "") val financingLink: String = "",
+    @ColumnInfo(defaultValue = "1000") val financingMin: Double = 1000.0,
 )
 
 /** A photo taken on a job (before / after / problem found). */
@@ -447,6 +478,12 @@ interface AppDao {
 
     @Query("SELECT * FROM Trip ORDER BY startedAt DESC")
     fun trips(): Flow<List<Trip>>
+
+    @Query("SELECT * FROM Trip ORDER BY startedAt DESC")
+    suspend fun tripsNow(): List<Trip>
+
+    @Query("SELECT * FROM Attachment")
+    suspend fun attachmentsNow(): List<Attachment>
     @Insert suspend fun insertTrip(t: Trip): Long
     @Update suspend fun updateTrip(t: Trip)
     @Delete suspend fun deleteTrip(t: Trip)
@@ -497,6 +534,30 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
 val MIGRATION_15_16 = object : Migration(15, 16) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `Quote` ADD COLUMN `confirmedAt` INTEGER")
+    }
+}
+
+/** Version 23: add-ons, quote follow-ups, checklists, missed-call text-back, payment links, customer pages. */
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf(
+            "ALTER TABLE `QuoteLine` ADD COLUMN `optional` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `QuoteLine` ADD COLUMN `addOnPrice` REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE `QuoteLine` ADD COLUMN `addOnState` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `Quote` ADD COLUMN `followUps` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `Quote` ADD COLUMN `lastFollowUpAt` INTEGER",
+            "ALTER TABLE `Quote` ADD COLUMN `checklist` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `followUpOn` INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE `Settings` ADD COLUMN `followUpDays` INTEGER NOT NULL DEFAULT 3",
+            "ALTER TABLE `Settings` ADD COLUMN `missedCallOn` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `Settings` ADD COLUMN `missedCallCustomers` INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE `Settings` ADD COLUMN `missedCallText` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `cardPayLink` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `financingLink` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Settings` ADD COLUMN `financingMin` REAL NOT NULL DEFAULT 1000",
+            "ALTER TABLE `Customer` ADD COLUMN `portalToken` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `Customer` ADD COLUMN `portalUrl` TEXT NOT NULL DEFAULT ''",
+        ).forEach { db.execSQL(it) }
     }
 }
 
@@ -652,7 +713,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 @Database(
     entities = [Customer::class, Material::class, Quote::class, QuoteLine::class, StockMove::class, Expense::class, Settings::class, Attachment::class, Trip::class, JobPhoto::class],
-    version = 22,
+    version = 23,
     exportSchema = true,
 )
 abstract class AppDb : RoomDatabase() {
@@ -664,7 +725,7 @@ abstract class AppDb : RoomDatabase() {
         fun close() = synchronized(this) { instance?.close(); instance = null }
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "zimdars.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                 .build().also { instance = it }
         }
     }

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Request a visit from a licensed electrician. Tell us what is going on and when works for you.">
+<meta name="referrer" content="no-referrer">
+<title>Request an electrician</title>
+<style>
+  :root {
+    --ink: #1c1f21; --muted: #5d656b; --line: #d9dde0; --paper: #ffffff; --wash: #f3f4f5;
+    --band: #1c1f21; --neon: #dcff34; --ok: #2e8f5b; --warn: #c2410c;
+    --cond: "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--wash); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .sheet { max-width: 680px; margin: 0 auto; background: var(--paper); min-height: 100vh; }
+  header { background: var(--band); color: #f2f3f3; padding: 22px 20px 18px; border-bottom: 4px solid var(--neon); }
+  header h1 { margin: 0; font: 700 26px/1.1 var(--cond); letter-spacing: .5px; text-transform: uppercase; }
+  header .contact { margin-top: 6px; font-size: 13px; color: #c9cdd0; }
+  main { padding: 6px 20px 40px; }
+  .kicker { font: 600 11px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+  h2 { font: 700 15px/1.2 var(--cond); text-transform: uppercase; letter-spacing: 1px; margin: 26px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .doc { font: 700 26px/1 var(--cond); text-transform: uppercase; }
+  .when { margin-top: 18px; border: 2px solid var(--ink); padding: 16px; display: grid; gap: 4px; }
+  .when .day { font: 700 28px/1.1 var(--cond); }
+  .when .time { font-size: 18px; font-weight: 600; }
+  .when .window { color: var(--muted); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+  .muted { color: var(--muted); }
+  .note { background: var(--wash); border-left: 3px solid var(--ink); padding: 10px 12px; font-size: 14px; margin: 10px 0; }
+  ul { margin: 6px 0 0; padding-left: 20px; } li { margin: 4px 0; }
+  button, .btn { font: 700 16px var(--cond); text-transform: uppercase; letter-spacing: 1px; border: 0; cursor: pointer; text-decoration: none; display: block; text-align: center; }
+  .btn-main { background: var(--ink); color: var(--neon); padding: 16px 20px; width: 100%; margin-top: 18px; }
+  .btn-main[disabled] { opacity: .5; }
+  .btn-line { border: 1.5px solid var(--ink); color: var(--ink); background: var(--paper); padding: 13px 14px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .confirmed { border: 2px solid var(--ok); padding: 14px 16px; margin-top: 18px; }
+  .confirmed .badge { color: var(--ok); font: 700 22px var(--cond); text-transform: uppercase; }
+  .err { color: var(--warn); font-weight: 600; margin-top: 10px; min-height: 1em; }
+  .center { padding: 60px 20px; text-align: center; }
+  .small { font-size: 13px; }
+  .resched { border: 1.5px dashed var(--ink); padding: 14px; margin-top: 14px; display: grid; gap: 10px; }
+  .resched label { font-size: 14px; font-weight: 600; }
+  .resched input, .resched textarea, .resched select { width: 100%; font-size: 17px; padding: 10px; border: 1px solid #9aa2a8; border-radius: 0; background: #fff; font-family: inherit; }
+  .parts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .parts button { padding: 11px 4px; font-size: 13px; }
+  .parts button.on { background: var(--ink); color: var(--neon); }
+  .linkbtn { background: none; color: var(--ink); text-decoration: underline; padding: 12px 0 0; font: 600 15px system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
+  .field { display: grid; gap: 6px; margin-top: 14px; }
+  .field label { font-weight: 600; font-size: 15px; }
+  .field input, .field textarea { width: 100%; font-size: 17px; padding: 12px; border: 1px solid #9aa2a8; border-radius: 0; background: #fff; font-family: inherit; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips label { border: 1.5px solid var(--ink); padding: 9px 12px; font-size: 14px; font-weight: 600; cursor: pointer; user-select: none; }
+  .chips input { display: none; }
+  .chips input:checked + span { color: var(--neon); }
+  .chips label.on { background: var(--ink); color: var(--neon); }
+  .thumbs { display: flex; gap: 8px; margin-top: 8px; }
+  .thumbs img { width: 84px; height: 84px; object-fit: cover; border: 1px solid var(--line); }
+  .hp { position: absolute; left: -5000px; }
+  .warnbox { border-left: 4px solid var(--warn); background: #fff4ee; padding: 10px 12px; font-size: 14px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="sheet"><div id="app">
+<header><h1 id="bn">Electrician</h1><div class="contact" id="bc"></div></header>
+<main id="m">
+  <div class="title-row"><div><div class="kicker">Request a visit</div><div class="doc">What's going on?</div></div></div>
+  <p class="muted small" style="margin-top:8px">Tell us about the problem or project and when works for you. We'll text you back to set a time.</p>
+  <div class="warnbox"><b>Sparks, smoke or a burning smell?</b> Shut off the breaker if it's safe and call 911. For downed lines or a power outage, call your utility.</div>
+  <div class="field"><label for="nm">Your name</label><input id="nm" autocomplete="name" maxlength="80"></div>
+  <div class="field"><label for="ph">Mobile number</label><input id="ph" type="tel" autocomplete="tel" maxlength="30" placeholder="We'll text you here"></div>
+  <div class="field"><label for="em">Email (optional)</label><input id="em" type="email" autocomplete="email" maxlength="120"></div>
+  <div class="field"><label for="ad">Address of the job</label><input id="ad" autocomplete="street-address" maxlength="200" placeholder="Street, town"></div>
+  <div class="field"><label for="pr">What do you need done?</label><textarea id="pr" rows="4" maxlength="1500" placeholder="e.g. Kitchen outlets stopped working, or I'd like a new circuit for a dryer"></textarea></div>
+  <div class="field"><label>Photos (optional, up to 3)</label><input id="ph1" type="file" accept="image/*" multiple><div class="thumbs" id="th"></div></div>
+  <div class="field"><label>When works for you?</label><div class="chips" id="ch"></div></div>
+  <div class="field"><label><input type="checkbox" id="ur" style="width:auto;margin-right:8px">It's urgent (something isn't working right now)</label></div>
+  <input class="hp" id="ws" tabindex="-1" autocomplete="off" aria-hidden="true">
+  <div class="err" id="er" role="alert"></div>
+  <button class="btn-main" id="go" type="button">Send request</button>
+  <p class="muted small" style="margin-top:12px">Your information is only used to contact you about this request.</p>
+</main></div></div>
+<script>
+(function () {
+  "use strict";
+  var API = "https://dmaslbfwpsfnnnyushbc.supabase.co/functions/v1/book";
+  var $ = function (id) { return document.getElementById(id); };
+  var biz = {};
+  fetch(API, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (b) {
+    biz = b || {};
+    if (b.name) { $("bn").textContent = b.name; document.title = "Request a visit · " + b.name; }
+    $("bc").textContent = [b.area, b.phone].filter(Boolean).join(" · ");
+  }).catch(function () {});
+  var times = ["As soon as possible", "Weekday mornings", "Weekday afternoons", "Weekday evenings", "Saturday", "I'm flexible"];
+  var chosen = [];
+  times.forEach(function (t) {
+    var l = document.createElement("label"); l.textContent = t;
+    l.addEventListener("click", function () {
+      var i = chosen.indexOf(t); if (i >= 0) { chosen.splice(i, 1); l.classList.remove("on"); } else { chosen.push(t); l.classList.add("on"); }
+    });
+    $("ch").appendChild(l);
+  });
+  var photos = [];
+  function shrink(file) {
+    return new Promise(function (ok) {
+      var img = new Image(); var url = URL.createObjectURL(file);
+      img.onload = function () {
+        var s = Math.min(1, 1280 / Math.max(img.width, img.height));
+        var c = document.createElement("canvas"); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        var q = 0.72, out = c.toDataURL("image/jpeg", q);
+        while (out.length > 650000 && q > 0.3) { q -= 0.12; out = c.toDataURL("image/jpeg", q); }
+        ok(out);
+      };
+      img.onerror = function () { ok(null); }; img.src = url;
+    });
+  }
+  $("ph1").addEventListener("change", function (e) {
+    var files = Array.prototype.slice.call(e.target.files || [], 0, 3 - photos.length);
+    Promise.all(files.map(shrink)).then(function (list) {
+      list.filter(Boolean).forEach(function (d) {
+        if (photos.length >= 3) return; photos.push(d);
+        var im = document.createElement("img"); im.src = d; $("th").appendChild(im);
+      });
+    });
+  });
+  $("go").addEventListener("click", function () {
+    var er = $("er"); er.textContent = "";
+    var name = $("nm").value.trim(), phone = $("ph").value.trim(), problem = $("pr").value.trim();
+    if (name.length < 2) { er.textContent = "Please enter your name."; return; }
+    if (phone.replace(/\D/g, "").length < 10) { er.textContent = "Please enter a mobile number we can text."; return; }
+    if (problem.length < 3) { er.textContent = "Please tell us what you need done."; return; }
+    var btn = $("go"); btn.disabled = true; btn.textContent = "Sending…";
+    fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      action: "request", name: name, phone: phone, email: $("em").value.trim(), address: $("ad").value.trim(), problem: problem,
+      times: chosen, urgent: $("ur").checked, photos: photos, website: $("ws").value }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.j.error === "slow_down" ? "Too many requests. Please try again later or call." : "x");
+        var m = $("m"); m.innerHTML = "";
+        var box = document.createElement("div"); box.className = "confirmed";
+        box.innerHTML = '<div class="badge">✓ Request sent</div>';
+        var p = document.createElement("p"); p.textContent = "Thanks, " + name.split(" ")[0] + "! " + (biz.owner || "We") + " will text you at " + phone + " to set up a time." + (biz.phone ? " Need us sooner? Call or text " + biz.phone + "." : "");
+        box.appendChild(p); m.appendChild(box);
+      })
+      .catch(function (e) { er.textContent = e.message && e.message !== "x" ? e.message : "Couldn't send. Check your connection and try again."; btn.disabled = false; btn.textContent = "Send request"; });
+  });
+})();
+</script>
+</body>
+</html>

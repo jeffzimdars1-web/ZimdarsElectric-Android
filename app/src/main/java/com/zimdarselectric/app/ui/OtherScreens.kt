@@ -392,6 +392,10 @@ fun CustomersScreen(vm: AppViewModel, onBack: () -> Unit) {
             GhostButton("+ Add another property", Modifier.fillMaxWidth()) { props.add(Customer.Property("", "")) }
             Spacer(Modifier.height(8.dp))
             Field("Notes (panel location, gate code…)", notes, { notes = it }, singleLine = false)
+            if (c.id != 0L) {
+                Spacer(Modifier.height(10.dp))
+                CustomerPageButton(vm, c)
+            }
           }
         }
     }
@@ -633,6 +637,41 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 NumField("Federal bracket %", s.fedTaxPct, "fed", Modifier.weight(1f)) { save(s.copy(fedTaxPct = it.coerceIn(0.0, 40.0))) }
                 NumField("NY State %", s.stateTaxPct, "nys", Modifier.weight(1f)) { save(s.copy(stateTaxPct = it.coerceIn(0.0, 12.0))) }
             }
+
+            SectionHeader("15", "Quote follow-ups")
+            Text("If a customer hasn't signed a quote, the app texts them a friendly reminder (up to 2 times, between 10 am and 7 pm).", color = Z.muted, fontSize = 13.sp)
+            Gap()
+            Segmented(listOf("Off", "On"), if (s.followUpOn) 1 else 0) { save(s.copy(followUpOn = it == 1)) }
+            if (s.followUpOn) { Gap(); NumField("Text them after (days)", s.followUpDays.toDouble(), "fud") { save(s.copy(followUpDays = it.toInt().coerceIn(1, 30))) } }
+
+            SectionHeader("16", "Missed-call text-back")
+            MissedCallSettings(s) { save(it) }
+
+            SectionHeader("17", "Booking page")
+            Text("Put this link on Google, Facebook, your truck or business card. Customers fill it out (with photos), and it shows up in the app as a new appointment to schedule.",
+                color = Z.muted, fontSize = 13.sp)
+            Gap()
+            Text(com.zimdarselectric.app.data.MissedCalls.BOOK_URL, color = Z.info, fontFamily = Mono, fontSize = 12.sp)
+            Gap()
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GhostButton("Open", Modifier.weight(1f)) {
+                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(com.zimdarselectric.app.data.MissedCalls.BOOK_URL)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+                GhostButton("Share", Modifier.weight(1f)) {
+                    runCatching { context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                        .putExtra(android.content.Intent.EXTRA_TEXT, "Request a visit from ${s.businessName}: ${com.zimdarselectric.app.data.MissedCalls.BOOK_URL}"), "Share").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+            }
+
+            SectionHeader("18", "Card payments + financing")
+            Text("Optional. Card and financing need your own account with a payment company (for example Square or PayPal for cards). Paste a payment link here and a \"Pay by card\" button shows on invoices. Put {amount} where the amount goes if your link supports it.",
+                color = Z.muted, fontSize = 13.sp)
+            Gap()
+            TextFieldSaved("Card payment link", s.cardPayLink, "cardlink") { save(s.copy(cardPayLink = it.trim())) }
+            Gap()
+            TextFieldSaved("Financing application link", s.financingLink, "finlink") { save(s.copy(financingLink = it.trim())) }
+            Gap()
+            NumField("Show financing on jobs over $", s.financingMin, "finmin") { save(s.copy(financingMin = it.coerceAtLeast(0.0))) }
             Spacer(Modifier.height(40.dp))
         }
     }
@@ -640,6 +679,33 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun Gap() = Spacer(Modifier.height(8.dp))
+
+/** Text back people whose calls you miss. Needs phone-state, call-log and SMS permission. */
+@Composable
+private fun MissedCallSettings(s: Settings, save: (Settings) -> Unit) {
+    val context = LocalContext.current
+    val perms = arrayOf(android.Manifest.permission.READ_PHONE_STATE, android.Manifest.permission.READ_CALL_LOG, android.Manifest.permission.SEND_SMS)
+    fun granted() = perms.all { androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+    var ok by remember { mutableStateOf(granted()) }
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) {
+        ok = granted(); if (ok) save(s.copy(missedCallOn = true))
+    }
+    Text("When you miss a call (7 am to 8 pm), the app texts them back so they don't call the next electrician. Each number gets at most one text every 12 hours. People in your phone contacts who aren't customers are skipped.",
+        color = Z.muted, fontSize = 13.sp)
+    Gap()
+    Segmented(listOf("Off", "On"), if (s.missedCallOn && ok) 1 else 0) { if (it == 1) { if (granted()) save(s.copy(missedCallOn = true)) else ask.launch(perms) } else save(s.copy(missedCallOn = false)) }
+    if (s.missedCallOn && !ok) { Gap(); Text("Allow Phone, Call logs and SMS for the app to turn this on.", color = Z.warn, fontSize = 13.sp) }
+    if (s.missedCallOn && ok) {
+        Gap()
+        Label("Also text customers already in the app?")
+        Spacer(Modifier.height(4.dp))
+        Segmented(listOf("New callers only", "Everyone"), if (s.missedCallCustomers) 1 else 0) { save(s.copy(missedCallCustomers = it == 1)) }
+        Gap()
+        TextFieldSaved("Message (blank = standard)", s.missedCallText, "mctext") { save(s.copy(missedCallText = it.trim())) }
+        Spacer(Modifier.height(4.dp))
+        Text("Standard: " + com.zimdarselectric.app.data.MissedCalls.defaultText(s), color = Z.muted, fontSize = 12.sp)
+    }
+}
 
 
 /** Nightly backup status, Back up now, and Restore. */
@@ -758,6 +824,39 @@ fun SignaturePad(onCancel: () -> Unit, onSave: (android.graphics.Bitmap) -> Unit
                 val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; strokeWidth = 5f; strokeCap = android.graphics.Paint.Cap.ROUND; style = android.graphics.Paint.Style.STROKE }
                 strokes.forEach { pts -> for (i in 1 until pts.size) c.drawLine(pts[i - 1].x - minX, pts[i - 1].y - minY, pts[i].x - minX, pts[i].y - minY, p) }
                 onSave(bmp)
+            }
+        }
+    }
+}
+
+
+/** Makes (or refreshes) the customer's own page with all their quotes, appointments and invoices, then lets you text or share the link. */
+@Composable
+private fun CustomerPageButton(vm: AppViewModel, c: Customer) {
+    val context = LocalContext.current
+    var busy by remember { mutableStateOf(false) }
+    var url by remember(c.id) { mutableStateOf(c.portalUrl.takeIf { it.isNotBlank() }) }
+    var err by remember { mutableStateOf<String?>(null) }
+    GhostButton(if (busy) "Making page…" else if (url == null) "Make customer page" else "Update customer page", Modifier.fillMaxWidth(), color = Z.info) {
+        if (busy) return@GhostButton
+        busy = true; err = null
+        vm.shareCustomerPage(c) { u, e -> busy = false; url = u ?: url; err = e }
+    }
+    err?.let { Text(it, color = Z.warn, fontSize = 13.sp) }
+    url?.let { u ->
+        Spacer(Modifier.height(6.dp))
+        Text("Their page shows every quote, appointment and invoice in one place.", color = Z.muted, fontSize = 12.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GhostButton("Text it", Modifier.weight(1f)) {
+                val body = "Hi ${c.name.substringBefore(' ')}, here's your page with all your quotes, appointments and invoices:"
+                val phone = c.phone.filter { it.isDigit() || it == '+' }
+                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:$phone"))
+                    .putExtra("sms_body", body + "\n" + u).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            }
+            GhostButton("Share", Modifier.weight(1f)) {
+                runCatching { context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, u), "Share").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
         }
     }

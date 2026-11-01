@@ -166,13 +166,18 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         if (m != null && m.photoPath.isNotBlank()) { ItemThumb(m.photoPath, 36.dp); Spacer(Modifier.width(10.dp)) }
                         Text(l.name, color = Z.text, fontSize = 17.sp, modifier = Modifier.weight(1f))
-                        Text(money(l.qty * l.unitCost * (1 + q.markupPct / 100)), fontFamily = Mono, fontSize = 14.sp, color = Z.text)
+                        Text(money(com.zimdarselectric.app.data.linePrice(q, l)), fontFamily = Mono, fontSize = 14.sp, color = if (l.counts) Z.text else Z.muted)
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         if (both) {
                             Text(if (l.repair) "REPAIR" else "INSTALL", fontFamily = Mono, fontSize = 11.sp, color = if (l.repair) Z.warn else Z.info,
                                 modifier = Modifier.border(1.dp, if (l.repair) Z.warn else Z.info).clickable(enabled = !locked) { vm.saveLine(l.copy(repair = !l.repair)) }
                                     .padding(horizontal = 6.dp, vertical = 2.dp))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        if (l.optional) {
+                            val (t, c) = when (l.addOnState) { 1 -> "ADD-ON · ADDED" to Z.ok; 2 -> "ADD-ON · PASSED" to Z.muted; else -> "ADD-ON · OPTIONAL" to Z.neon }
+                            Text(t, fontFamily = Mono, fontSize = 11.sp, color = c, modifier = Modifier.border(1.dp, c).padding(horizontal = 6.dp, vertical = 2.dp))
                             Spacer(Modifier.width(8.dp))
                         }
                         Text(stockNote.first.uppercase(), fontFamily = Mono, fontSize = 11.sp, color = stockNote.second, modifier = Modifier.weight(1f))
@@ -252,6 +257,9 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
             SectionHeader("07", "Photos")
             PhotosSection(vm, q)
 
+            SectionHeader("07", "Checklists")
+            ChecklistSection(q, locked = false) { save(q.copy(checklist = it)) }
+
             SectionHeader("08", if (q.parentId != null) "Change order" else "Change orders")
             ChangeOrdersSection(vm, q, quotes, allLines, settings, onOpenQuote)
 
@@ -310,12 +318,28 @@ fun QuoteEditor(vm: AppViewModel, quoteId: Long, onBack: () -> Unit, onPriceBook
     editLine?.let { l ->
         var qty by remember(l.id) { mutableStateOf(qtyText(l.qty)) }
         var cost by remember(l.id) { mutableStateOf(qtyText(l.unitCost)) }
+        var optional by remember(l.id) { mutableStateOf(l.optional) }
+        var addOn by remember(l.id) { mutableStateOf(if (l.addOnPrice > 0) qtyText(l.addOnPrice) else "") }
         ZDialog(title = l.name, onDismiss = { editLine = null },
-            confirm = "Save" to { vm.saveLine(l.copy(qty = qty.toNum(), unitCost = cost.toNum())); editLine = null },
+            confirm = "Save" to {
+                vm.saveLine(l.copy(qty = qty.toNum(), unitCost = cost.toNum(), optional = optional, addOnPrice = if (optional) addOn.toNum() else 0.0,
+                    addOnState = if (optional && !l.optional) 0 else l.addOnState))
+                editLine = null
+            },
             dismiss = "Remove" to { vm.deleteLine(l); editLine = null }) {
             Field("Quantity (${l.unit})", qty, { qty = it }, number = true)
             Spacer(Modifier.height(8.dp))
             Field("Your cost per ${l.unit}", cost, { cost = it }, number = true)
+            Spacer(Modifier.height(12.dp))
+            Label("Optional add-on? The customer can check it on the signing page.")
+            Spacer(Modifier.height(6.dp))
+            Segmented(listOf("Part of the job", "Optional add-on"), if (optional) 1 else 0) { optional = it == 1 }
+            if (optional) {
+                Spacer(Modifier.height(8.dp))
+                Field("Add-on price, installed (blank = materials + markup)", addOn, { addOn = it }, number = true)
+                Spacer(Modifier.height(4.dp))
+                Text("Example: whole-house surge protector, \$350 installed. Not counted in the total unless they pick it.", color = Z.muted, fontSize = 12.sp)
+            }
         }
     }
 

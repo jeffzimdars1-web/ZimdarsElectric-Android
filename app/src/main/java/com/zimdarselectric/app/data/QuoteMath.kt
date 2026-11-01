@@ -34,14 +34,21 @@ fun isRepairLine(q: Quote, l: QuoteLine) = when (q.jobType) {
 /** All labor hours on the quote (install + repair). */
 fun totalHours(q: Quote) = q.laborHours + if (q.jobType == JobType.BOTH) q.repairHours else 0.0
 
-fun computeTotals(q: Quote, lines: List<QuoteLine>, s: Settings): QuoteTotals {
+/** What the customer pays for one line (add-ons with a set installed price use that). */
+fun linePrice(q: Quote, l: QuoteLine): Double =
+    if (l.optional && l.addOnPrice > 0) l.addOnPrice else l.qty * l.unitCost * (1 + q.markupPct / 100.0)
+
+fun computeTotals(q: Quote, allLines: List<QuoteLine>, s: Settings): QuoteTotals {
+    // Add-ons only count once the customer picks them.
+    val lines = allLines.filter { it.counts }
     val materialsCost = lines.sumOf { it.qty * it.unitCost }
-    val markup = materialsCost * q.markupPct / 100.0
-    val materialsPrice = materialsCost + markup
+    val flat = lines.filter { it.optional && it.addOnPrice > 0 }
+    val markup = (materialsCost - flat.sumOf { it.qty * it.unitCost }) * q.markupPct / 100.0
+    val materialsPrice = lines.sumOf { linePrice(q, it) }
     val hours = totalHours(q)
     val labor = hours * q.laborRate
     val factor = 1 + q.markupPct / 100.0
-    val repairMaterials = lines.filter { isRepairLine(q, it) }.sumOf { it.qty * it.unitCost } * factor
+    val repairMaterials = lines.filter { isRepairLine(q, it) }.sumOf { linePrice(q, it) }
     val repairLabor = when (q.jobType) { JobType.REPAIR -> labor; JobType.BOTH -> q.repairHours * q.laborRate; else -> 0.0 }
     val repairPart = repairMaterials + repairLabor
     val installPart = materialsPrice + labor - repairPart
@@ -66,7 +73,7 @@ fun computeTotals(q: Quote, lines: List<QuoteLine>, s: Settings): QuoteTotals {
  */
 fun holdsByMaterial(quotes: List<Quote>, lines: List<QuoteLine>, excludeQuoteId: Long? = null): Map<Long, Double> {
     val holding = quotes.filter { it.status in Status.holding && it.id != excludeQuoteId }.map { it.id }.toSet()
-    return lines.filter { it.quoteId in holding && it.materialId != null }
+    return lines.filter { it.quoteId in holding && it.materialId != null && it.counts }
         .groupBy { it.materialId!! }
         .mapValues { (_, ls) -> ls.sumOf { it.qty } }
 }

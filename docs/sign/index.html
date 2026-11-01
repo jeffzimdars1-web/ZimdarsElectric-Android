@@ -58,6 +58,10 @@
   .signed .badge { color: var(--ok); font: 700 20px var(--cond); text-transform: uppercase; }
   .signed img { max-width: 320px; width: 100%; display: block; margin: 8px 0; border-bottom: 1px solid var(--ink); }
   .center { padding: 60px 20px; text-align: center; }
+  .addon { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .addon input { width: 24px; height: 24px; flex: none; accent-color: var(--ink); margin-top: 1px; }
+  .addon .nm { flex: 1; } .addon .pr { font-weight: 700; white-space: nowrap; }
+  .yourtotal { display: flex; justify-content: space-between; font: 700 22px var(--cond); margin-top: 12px; padding: 10px 0; border-top: 2px solid var(--ink); }
   .st124 { border: 1px solid #9aa2a8; background: #f6f7f3; padding: 14px; margin: 16px 0 6px; }
   .st124 .opts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 6px 0 10px; font-size: 15px; }
   .st124 .opts label { display: flex; align-items: center; gap: 8px; }
@@ -85,6 +89,7 @@
   var API = "https://dmaslbfwpsfnnnyushbc.supabase.co/functions/v1/sign";
   var token = new URLSearchParams(location.search).get("t") || "";
   var app = document.getElementById("app");
+  var chosenAddons = [];
 
   function el(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -204,6 +209,41 @@
     }
     trow("Total", money(t.total), "grand");
     m.appendChild(tot);
+    var addons = p.addons || [];
+    if (addons.length) {
+      var taxRate = (Number(t.taxRate) || 0) / 100;
+      var priceOf = function (a) { return a.price * (1 + (a.taxable ? taxRate : 0)); };
+      m.appendChild(el("h2", { text: "Optional add-ons" }));
+      var picked = d.status === "signed" ? (d.addons || []) : null;
+      if (picked) {
+        addons.forEach(function (a) {
+          m.appendChild(el("div", { cls: "addon" }, [el("span", { cls: "nm", text: (picked.indexOf(a.id) >= 0 ? "✓ Added: " : "Not added: ") + a.name }),
+            el("span", { cls: "pr", text: money(priceOf(a)) })]));
+        });
+      } else {
+        m.appendChild(el("p", { cls: "muted", style: "font-size:14px;margin:4px 0", text: "Check anything you'd like added. Your total updates below." }));
+        var yt = el("span", { text: money(t.total) });
+        var update = function () {
+          var sum = 0; addons.forEach(function (a) { if (chosenAddons.indexOf(a.id) >= 0) sum += priceOf(a); });
+          yt.textContent = money(t.total + sum);
+        };
+        addons.forEach(function (a) {
+          var cb = el("input", { type: "checkbox" });
+          cb.addEventListener("change", function () {
+            chosenAddons = chosenAddons.filter(function (x) { return x !== a.id; });
+            if (cb.checked) chosenAddons.push(a.id);
+            update();
+          });
+          m.appendChild(el("label", { cls: "addon" }, [cb, el("span", { cls: "nm" }, [a.name, a.note ? el("div", { cls: "muted", style: "font-size:13px", text: a.note }) : null]),
+            el("span", { cls: "pr", text: "+" + money(priceOf(a)) })]));
+        });
+        m.appendChild(el("div", { cls: "yourtotal" }, [el("span", { text: "Your total" }), yt]));
+      }
+    }
+    if (p.financing && p.financing.url) {
+      m.appendChild(el("p", { style: "font-size:15px;margin:12px 0 0" }, [el("b", { text: "Pay over time: " }),
+        el("a", { href: p.financing.url, target: "_blank", rel: "noopener", text: p.financing.text || "See financing options →" })]));
+    }
     if (both) {
       m.appendChild(el("div", { cls: "note", text: "The new installation is a capital improvement to your property, so it has no sales tax; you'll be asked to sign New York State form ST-124 for that part. Sales tax is charged on the repair part only." }));
     } else if (q.jobType !== "REPAIR") {
@@ -375,7 +415,7 @@
       var sig = drawn ? signaturePng() : null;
       if (!sig) { err.textContent = "Please sign in the box with your finger."; return; }
       btn.disabled = true; btn.textContent = "Signing…";
-      fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", t: token, name: n, agree: true, signature: sig, st124: stv }) })
+      fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", t: token, name: n, agree: true, signature: sig, st124: stv, addons: chosenAddons }) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
           if (res.ok) { box.replaceWith(signedBlock(n, res.j.signed_at, sig, b, stv)); wirePrint(); window.scrollTo(0, document.body.scrollHeight); return; }
