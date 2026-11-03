@@ -79,7 +79,7 @@ fun StockScreen(vm: AppViewModel) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.width(96.dp)) { GhostButton(if (scanner.busy) "Reading…" else "Scan", Modifier.fillMaxWidth().height(54.dp)) { if (!scanner.busy) scanner.launch() } }
-                Box(Modifier.width(96.dp)) { NeonButton("+ Add", Modifier.fillMaxWidth()) { edit(Material(name = "")) } }
+                Box(Modifier.width(96.dp)) { NeonButton("+ Add", Modifier.fillMaxWidth(), arrow = false, fontSize = 18) { edit(Material(name = "")) } }
             }
         }
         if (openReceiptLines > 0) { Spacer(Modifier.height(12.dp)); ReceiptBanner(openReceiptLines) { reviewing = true } }
