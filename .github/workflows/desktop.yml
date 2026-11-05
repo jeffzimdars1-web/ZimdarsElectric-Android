@@ -1,0 +1,40 @@
+name: Build PC app
+
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+      - name: Set version
+        working-directory: desktop
+        shell: bash
+        run: npm pkg set version="1.0.${{ github.run_number }}"
+      - name: Build installer
+        working-directory: desktop
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Publish (not marked latest, so the phone's updater ignores it)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="pc-v1.0.${{ github.run_number }}"
+          gh release create "$tag" "desktop/dist/ZimdarsElectric-PC-Setup.exe" --latest=false \
+            --title "Zimdars Electric for PC 1.0.${{ github.run_number }}" \
+            --notes "Windows installer. Download ZimdarsElectric-PC-Setup.exe and run it."

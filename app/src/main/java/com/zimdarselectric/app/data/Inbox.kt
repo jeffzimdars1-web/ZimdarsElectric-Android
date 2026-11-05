@@ -48,7 +48,7 @@ object Inbox {
         fun l(k: String, def: Long?) = if (o.has(k) && !o.isNull(k)) o.getLong(k) else def
         fun s(k: String, def: String) = if (o.has(k) && !o.isNull(k)) o.getString(k) else def
         return base.copy(
-            title = s("title", base.title), site = s("site", base.site), jobType = s("jobType", base.jobType),
+            title = s("title", base.title), site = s("site", base.site), jobType = s("jobType", base.jobType), kind = s("kind", base.kind),
             notes = s("notes", base.notes), repairNotes = s("repairNotes", base.repairNotes),
             privateNote = s("privateNote", base.privateNote),
             laborHours = d("laborHours", base.laborHours), repairHours = d("repairHours", base.repairHours),
