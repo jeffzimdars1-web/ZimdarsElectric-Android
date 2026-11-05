@@ -59,6 +59,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             dao.quotes().collect { kotlinx.coroutines.delay(300); runCatching { TodayWidget.updateAll(app) } }
         }
         viewModelScope.launch { if (dao.settingsNow() == null) dao.saveSettings(Settings()) }
+        // Linked PC: send changes about 15 seconds after you stop editing.
+        viewModelScope.launch {
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            kotlinx.coroutines.flow.merge(quotes, customers, lines, materials, expenses, settings, photos)
+                .debounce(15_000).collect { runCatching { com.zimdarselectric.app.data.PcSync.push(app) } }
+        }
         // While the app is open, check for customer signatures every 20 seconds (only if a quote is waiting).
         viewModelScope.launch {
             while (true) {
@@ -508,6 +514,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val c = dao.customer(customerId) ?: return@launch
         dao.updateCustomer(com.zimdarselectric.app.data.House.put(c, address, info))
     }
+
+    /** Link a PC: a one-time code to type into Zimdars Electric for PC. */
+    fun pcPairCode(onResult: (String?, String?) -> Unit) = viewModelScope.launch {
+        runCatching { com.zimdarselectric.app.data.PcSync.pairCode(app) }
+            .onSuccess { onResult(it, null); launch { com.zimdarselectric.app.data.PcSync.push(app, force = true) } }
+            .onFailure { onResult(null, it.message ?: "Couldn't get a code") }
+    }
+    fun pcPushNow(onDone: () -> Unit) = viewModelScope.launch { com.zimdarselectric.app.data.PcSync.push(app, force = true); onDone() }
 
     /** You got the deposit (cash, Venmo, card…). */
     fun markDepositPaid(q: Quote, amount: Double) = viewModelScope.launch {

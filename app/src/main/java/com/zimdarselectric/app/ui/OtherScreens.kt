@@ -689,6 +689,9 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             TextFieldSaved("Financing application link", s.financingLink, "finlink") { save(s.copy(financingLink = it.trim())) }
             Gap()
             NumField("Show financing on jobs over $", s.financingMin, "finmin") { save(s.copy(financingMin = it.coerceAtLeast(0.0))) }
+
+            SectionHeader("19", "Zimdars Electric for PC")
+            PcLinkSettings(vm)
             Spacer(Modifier.height(40.dp))
         }
     }
@@ -889,5 +892,41 @@ fun SourceChips(selected: String, onPick: (String) -> Unit) {
             Text(src, color = if (on) Z.neon else Z.muted, fontSize = 13.sp,
                 modifier = Modifier.border(1.dp, if (on) Z.neon else Z.line).clickable { onPick(if (on) "" else src) }.padding(horizontal = 10.dp, vertical = 7.dp))
         }
+    }
+}
+
+
+/** Link the PC program: shows a one-time code, then keeps the PC up to date on its own. */
+@Composable
+private fun PcLinkSettings(vm: AppViewModel) {
+    val context = LocalContext.current
+    var code by remember { mutableStateOf<String?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var tick by remember { mutableStateOf(0) }
+    val linked = remember(tick, code) { com.zimdarselectric.app.data.PcSync.linked(context) }
+    val last = remember(tick, code) { com.zimdarselectric.app.data.PcSync.lastSent(context) }
+    val lastErr = remember(tick, code) { com.zimdarselectric.app.data.PcSync.lastError(context) }
+    Text("See your quotes, calendar, customers, house history, photos and money on your computer. The PC program is at " +
+        "github.com/jeffzimdars1-web/ZimdarsElectric-Android/releases (ZimdarsElectric-PC-Setup.exe). Your phone stays the main copy; jobs you make on the PC show up here.",
+        color = Z.muted, fontSize = 13.sp)
+    Spacer(Modifier.height(8.dp))
+    code?.let {
+        Text(it.chunked(4).joinToString(" "), color = Z.neon, fontFamily = Mono, fontSize = 34.sp, modifier = Modifier.padding(vertical = 6.dp))
+        Text("Type this code into the PC program. It works once, for 15 minutes.", color = Z.text, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+    }
+    err?.let { Text(it, color = Z.warn, fontSize = 13.sp) }
+    NeonButton(if (busy) "Getting code…" else if (linked) "Link another PC" else "Link a PC", Modifier.fillMaxWidth()) {
+        if (busy) return@NeonButton
+        busy = true; err = null
+        vm.pcPairCode { c, e -> busy = false; code = c; err = e }
+    }
+    if (linked) {
+        Spacer(Modifier.height(8.dp))
+        GhostButton("Send to PC now", Modifier.fillMaxWidth()) { vm.pcPushNow { tick++ } }
+        Spacer(Modifier.height(4.dp))
+        Label(if (lastErr != null) "Last try: $lastErr" else if (last > 0) "Sent " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(last)) else "Not sent yet",
+            color = if (lastErr != null) Z.warn else Z.muted)
     }
 }

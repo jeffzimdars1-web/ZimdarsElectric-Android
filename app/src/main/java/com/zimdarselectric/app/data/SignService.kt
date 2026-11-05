@@ -393,6 +393,7 @@ object SignService {
 class SignWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
         runCatching { InboxImport.pullAll(applicationContext) } // booking-page requests (notifies by itself)
+        runCatching { PcSync.push(applicationContext) } // keeps the PC program up to date
         SignService.notifySigned(applicationContext, SignService.sync(applicationContext))
         Result.success()
     } catch (e: Exception) {
