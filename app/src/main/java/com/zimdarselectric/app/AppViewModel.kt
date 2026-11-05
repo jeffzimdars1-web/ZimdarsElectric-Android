@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -61,9 +62,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { if (dao.settingsNow() == null) dao.saveSettings(Settings()) }
         // Linked PC: send changes about 15 seconds after you stop editing.
         viewModelScope.launch {
-            @OptIn(kotlinx.coroutines.FlowPreview::class)
-            kotlinx.coroutines.flow.merge(quotes, customers, lines, materials, expenses, settings, photos)
-                .debounce(15_000).collect { runCatching { com.zimdarselectric.app.data.PcSync.push(app) } }
+            pcChanges().collect { runCatching { com.zimdarselectric.app.data.PcSync.push(app) } }
         }
         // While the app is open, check for customer signatures every 20 seconds (only if a quote is waiting).
         viewModelScope.launch {
@@ -514,6 +513,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val c = dao.customer(customerId) ?: return@launch
         dao.updateCustomer(com.zimdarselectric.app.data.House.put(c, address, info))
     }
+
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private fun pcChanges() = kotlinx.coroutines.flow.merge(quotes, customers, lines, materials, expenses, settings, photos).debounce(15_000L)
 
     /** Link a PC: a one-time code to type into Zimdars Electric for PC. */
     fun pcPairCode(onResult: (String?, String?) -> Unit) = viewModelScope.launch {
