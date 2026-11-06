@@ -35,6 +35,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="pc-v1.0.${{ github.run_number }}"
-          gh release create "$tag" "desktop/dist/ZimdarsElectric-PC-Setup.exe" --latest=false \
+          gh release create "$tag" desktop/dist/ZimdarsElectric-PC.zip desktop/dist/ZimdarsElectric-PC-Setup.exe --latest=false \
             --title "Zimdars Electric for PC 1.0.${{ github.run_number }}" \
-            --notes "Windows installer. Download ZimdarsElectric-PC-Setup.exe and run it."
+            --notes "ZimdarsElectric-PC.zip: unzip anywhere and run Zimdars Electric.exe (no installer). ZimdarsElectric-PC-Setup.exe: installer."

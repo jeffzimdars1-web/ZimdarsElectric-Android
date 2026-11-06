@@ -9,7 +9,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis --publish never"
+    "dist": "electron-builder --win --publish never"
   },
   "devDependencies": {
     "electron": "33.2.1",
@@ -18,9 +18,24 @@
   "build": {
     "appId": "com.zimdarselectric.pc",
     "productName": "Zimdars Electric",
-    "files": ["src/**/*", "icon.png"],
+    "files": [
+      "src/**/*",
+      "icon.png"
+    ],
     "icon": "icon.png",
-    "win": { "target": "nsis", "artifactName": "ZimdarsElectric-PC-Setup.exe" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "shortcutName": "Zimdars Electric" }
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "ZimdarsElectric-PC.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Zimdars Electric",
+      "artifactName": "ZimdarsElectric-PC-Setup.${ext}"
+    }
   }
 }
