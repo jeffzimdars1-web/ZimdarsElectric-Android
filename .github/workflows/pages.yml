@@ -2,7 +2,7 @@ name: Signing page
 on:
   push:
     branches: [main]
-    paths: ["docs/**", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "desktop/src/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,6 +22,8 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Add the PC app as a web page (docs/pc)
+        run: mkdir -p docs/pc && cp desktop/src/index.html desktop/src/styles.css desktop/src/logic.js desktop/src/app.js desktop/src/manifest.json desktop/src/icon.png docs/pc/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs

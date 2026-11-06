@@ -907,8 +907,8 @@ private fun PcLinkSettings(vm: AppViewModel) {
     val linked = remember(tick, code) { com.zimdarselectric.app.data.PcSync.linked(context) }
     val last = remember(tick, code) { com.zimdarselectric.app.data.PcSync.lastSent(context) }
     val lastErr = remember(tick, code) { com.zimdarselectric.app.data.PcSync.lastError(context) }
-    Text("See your quotes, calendar, customers, house history, photos and money on your computer. The PC program is at " +
-        "github.com/jeffzimdars1-web/ZimdarsElectric-Android/releases (ZimdarsElectric-PC-Setup.exe). Your phone stays the main copy; jobs you make on the PC show up here.",
+    Text("See your quotes, calendar, customers, house history, photos and money on your computer. On the PC, open " +
+        "jeffzimdars1-web.github.io/ZimdarsElectric-Android/pc/ in Edge or Chrome. Your phone stays the main copy; jobs you make on the PC show up here.",
         color = Z.muted, fontSize = 13.sp)
     Spacer(Modifier.height(8.dp))
     code?.let {

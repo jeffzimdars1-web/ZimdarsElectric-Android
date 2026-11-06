@@ -1,0 +1,9 @@
+{
+  "name": "Zimdars Electric",
+  "short_name": "Zimdars",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#14171A",
+  "theme_color": "#14171A",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }]
+}

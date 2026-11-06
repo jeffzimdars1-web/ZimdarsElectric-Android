@@ -10,6 +10,20 @@
   const qty = (v) => (Math.round(Number(v) * 100) / 100).toString();
   const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
 
+  // Works as the Windows program or as a web page in any browser.
+  const native = !!window.zapi;
+  function openExternal(url) { if (!/^https:\/\//.test(url)) return; native ? window.zapi.openExternal(url) : window.open(url, "_blank", "noopener"); }
+  function savePdf(html, name) {
+    if (native) return window.zapi.savePdf(html, name);
+    // Browser: print the customer copy; choose "Save as PDF" (or "Microsoft Print to PDF") as the printer.
+    const f = document.createElement("iframe");
+    f.style.cssText = "position:fixed;width:0;height:0;border:0;right:0;bottom:0";
+    f.setAttribute("sandbox", "allow-modals allow-same-origin");
+    document.body.appendChild(f);
+    f.contentDocument.open(); f.contentDocument.write(html.replace("<title>", "<title>").replace("<head>", "<head><title>" + esc(name) + "</title>")); f.contentDocument.close();
+    setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } finally { setTimeout(() => f.remove(), 60_000); } }, 300);
+  }
+
   let key = store.get("key");
   let D = null, updatedAt = null, loadErr = null;
   let view = { page: "home" };
@@ -129,7 +143,7 @@
     return `
       <div class="toolbar">
         <span class="pill p-${esc(Z.statusOf(q)).replace(" ", ".")}">${esc(Z.statusOf(q))}</span>
-        ${q.kind !== "APPT" ? `<button class="btn small" data-pdf="${q.id}">Save PDF</button>` : ""}
+        ${q.kind !== "APPT" ? `<button class="btn small" data-pdf="${q.id}">${native ? "Save PDF" : "Print / Save PDF"}</button>` : ""}
         ${link(q.signUrl, q.kind === "APPT" ? "Customer's appointment page" : "Signing page")}${link(q.invoiceUrl, "Invoice page")}${link(q.st124Url, "ST-124 page")}
         ${site ? `<button class="btn ghost small" data-ext="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site)}">Map</button>` : ""}
         <button class="btn ghost small" data-edit="${q.id}">Add to this job</button>
@@ -394,8 +408,8 @@
     if ("tab" in d) { ui.quotesTab = Number(d.tab); return render(); }
     if ("year" in d) { ui.year = Number(d.year); return render(); }
     if ("mo" in d) { const b = ui.month || new Date(new Date().getFullYear(), new Date().getMonth(), 1); ui.month = d.mo === "0" ? null : new Date(b.getFullYear(), b.getMonth() + Number(d.mo), 1); return render(); }
-    if ("ext" in d) return window.zapi && window.zapi.openExternal(d.ext);
-    if ("pdf" in d) { const q = D.quote(Number(d.pdf)); if (q && window.zapi) window.zapi.savePdf(quotePdfHtml(q), `${q.number} ${q.customerName || ""}`.trim()); return; }
+    if ("ext" in d) return openExternal(d.ext);
+    if ("pdf" in d) { const q = D.quote(Number(d.pdf)); if (q) savePdf(quotePdfHtml(q), `${q.number} ${q.customerName || ""}`.trim()); return; }
     if ("refresh" in d) return load();
     if ("unlink" in d) { if (confirm("Unlink this PC? You'll need a new code from your phone to link it again.")) { key = null; store.set("key", null); D = null; render(); } return; }
   });
