@@ -57,7 +57,7 @@
     }
     if (!quiet) return render();
     // Background refresh: don't disturb typing, a half-filled form, or where you've scrolled to.
-    if (view.page === "new" || document.querySelector("input:focus, textarea:focus, select:focus, .viewer")) return;
+    if (view.page === "new" || view.page === "sheets" || document.querySelector("input:focus, textarea:focus, select:focus, .viewer")) return;
     const m = document.querySelector(".main"), y = m ? m.scrollTop : 0;
     render();
     const m2 = document.querySelector(".main"); if (m2) m2.scrollTop = y;
@@ -354,7 +354,7 @@
   }
 
   // ---------- Shell ----------
-  const PAGES = [["home", "Home"], ["quotes", "Quotes"], ["calendar", "Calendar"], ["customers", "Customers"], ["money", "Money"], ["stock", "Stock"]];
+  const PAGES = [["home", "Home"], ["quotes", "Quotes"], ["calendar", "Calendar"], ["customers", "Customers"], ["money", "Money"], ["stock", "Stock"], ["sheets", "Sheets"]];
   const stack = [];
   function go(v, push = true) { if (push) stack.push(view); view = v; render(); document.querySelector(".main")?.scrollTo(0, 0); }
   function back() { view = stack.pop() || { page: "home" }; render(); }
@@ -375,18 +375,19 @@
       <p class="muted">${loadErr ? esc(loadErr) : updatedAt === null ? "Loading…" : "Waiting for your phone to send its data. Open the app on your phone, then Settings → 19 → Send to PC now."}</p>
       <button class="btn ghost" data-refresh>Try again</button> <button class="btn ghost" data-unlink>Unlink</button></div>`; return; }
     const age = updatedAt ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000) : null;
-    const top = ["home", "quotes", "calendar", "customers", "money", "stock"].includes(view.page);
+    const top = ["home", "quotes", "calendar", "customers", "money", "stock", "sheets"].includes(view.page);
     let body = "";
     try {
       body = { home: homePage, quotes: quotesPage, quote: () => quotePage(view.id), calendar: calendarPage, customers: customersPage, customer: () => customerPage(view.id),
-        house: () => housePage(view.id, view.addr), money: moneyPage, stock: stockPage, new: () => newPage(view.edit) }[view.page]();
+        house: () => housePage(view.id, view.addr), money: moneyPage, stock: stockPage, new: () => newPage(view.edit), sheets: () => `<div id="sheetsRoot"></div>` }[view.page]();
     } catch (e) { body = `<div class="note warn">Something went wrong showing this page: ${esc(e.message)}</div>`; }
     $root.innerHTML = `<div class="app"><aside class="side"><div class="brand">ZIMDARS<br>ELECTRIC<small>FOR PC</small></div>
       <nav class="nav">${PAGES.map(([k, l]) => `<button data-page="${k}" class="${view.page === k ? "on" : ""}">${l}</button>`).join("")}</nav>
       <button class="btn new" data-new>+ New</button>
       <div class="foot">${loadErr ? `<span class="warn">${esc(loadErr)}</span><br>` : ""}From your phone ${age === null ? "" : age < 1 ? "just now" : age < 60 ? age + " min ago" : day(new Date(updatedAt).getTime())}<br>
         <a data-refresh>Refresh</a> · <a data-unlink>Unlink</a></div></aside>
-      <main class="main"><div class="top">${top ? "" : `<button class="btn ghost small" data-back>← Back</button>`}<h1>${esc(title())}</h1></div><div class="page">${body}</div></main></div>`;
+      <main class="main"><div class="top">${top ? "" : `<button class="btn ghost small" data-back>← Back</button>`}<h1>${esc(title())}</h1></div><div class="page${view.page === "sheets" ? " wide" : ""}">${body}</div></main></div>`;
+    if (view.page === "sheets" && window.ZS) window.ZS.mount(document.getElementById("sheetsRoot"), { call, data: () => D, savePdf });
   }
 
   // ---------- Events ----------

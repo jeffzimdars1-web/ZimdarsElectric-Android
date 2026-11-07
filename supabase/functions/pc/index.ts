@@ -1,6 +1,6 @@
 // Zimdars Electric for PC. The phone sends a snapshot of its data; the PC reads it and sends new jobs back through the inbox.
 // Public: POST {action:'pair_finish', code} -> {key} (one-time code shown on the phone).
-// App key (phone or linked PC): pair_start, put_snapshot, get_snapshot, photo_upload_url, photo_urls, send_job.
+// App key (phone or linked PC): pair_start, put_snapshot, get_snapshot, photo_upload_url, photo_urls, send_job, sheets_*.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -74,6 +74,30 @@ Deno.serve(async (req) => {
       case "photo_list": {
         const { data } = await db.storage.from(BUCKET).list("pc/photos", { limit: 1000 });
         return json({ names: (data ?? []).map((f: any) => f.name) });
+      }
+      // Zimdars Sheets (PC only): your own spreadsheets.
+      case "sheets_list": {
+        const { data } = await db.from("pc_sheets").select("id,name,updated_at").order("updated_at", { ascending: false }).limit(500);
+        return json({ items: data ?? [] });
+      }
+      case "sheet_get": {
+        const { data } = await db.from("pc_sheets").select("id,name,data,updated_at").eq("id", String(body.id ?? "")).maybeSingle();
+        return data ? json(data) : json({ error: "not_found" }, 404);
+      }
+      case "sheet_save": {
+        const name = String(body.name ?? "Untitled").trim().slice(0, 120) || "Untitled";
+        if (typeof body.data !== "object" || !body.data) return json({ error: "bad_request" }, 400);
+        const row = { name, data: body.data, updated_at: new Date().toISOString() };
+        if (body.id) {
+          const { data } = await db.from("pc_sheets").update(row).eq("id", String(body.id)).select("id,updated_at").maybeSingle();
+          return data ? json(data) : json({ error: "not_found" }, 404);
+        }
+        const { data } = await db.from("pc_sheets").insert(row).select("id,updated_at").single();
+        return json(data);
+      }
+      case "sheet_delete": {
+        await db.from("pc_sheets").delete().eq("id", String(body.id ?? ""));
+        return json({ ok: true });
       }
       case "send_job": {
         if (typeof body.data !== "object" || !body.data || !body.data.quote) return json({ error: "bad_request" }, 400);

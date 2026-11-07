@@ -20,6 +20,10 @@ jobs:
       - name: Install
         working-directory: desktop
         run: npm install --no-audit --no-fund
+      - name: Add Excel file support (SheetJS)
+        working-directory: desktop
+        shell: bash
+        run: npm pack xlsx@0.18.5 --silent && tar xzf xlsx-0.18.5.tgz && cp package/dist/xlsx.full.min.js src/vendor/xlsx.full.min.js && rm -rf package xlsx-0.18.5.tgz
       - name: Set version
         working-directory: desktop
         shell: bash
