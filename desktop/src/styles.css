@@ -82,24 +82,24 @@ textarea { min-height: 80px; resize: vertical; }
 .sx-fx { padding: 0 10px; font: italic 13px var(--mono); color: var(--muted); border-right: 1px solid var(--line); }
 #sfx { flex: 1; background: transparent; border: 0; color: var(--text); padding: 7px 10px; font: 14px var(--mono); }
 #sfx:focus { outline: none; background: var(--bg); }
-.sx-grid { position: relative; overflow: auto; height: calc(100vh - 230px); border: 1px solid var(--line); background: #fff; outline: none; }
-table.sx { border-collapse: separate; border-spacing: 0; table-layout: fixed; color: #111; font: 13.5px "Segoe UI", system-ui, sans-serif; user-select: none; }
-table.sx thead th { position: sticky; top: 0; z-index: 2; background: #EEF0F2; color: #444; font: 600 12px var(--sans); letter-spacing: 0; text-transform: none; text-align: center; padding: 3px 0;
-  border-right: 1px solid #D4D8DC; border-bottom: 1px solid #C4C9CE; }
-table.sx tbody th { position: sticky; left: 0; z-index: 1; background: #EEF0F2; color: #555; font: 12px var(--sans); text-align: center; width: 46px; min-width: 46px; padding: 0 4px;
-  border-right: 1px solid #C4C9CE; border-bottom: 1px solid #D4D8DC; cursor: default; }
+.sx-grid { position: relative; overflow: auto; height: calc(100vh - 230px); border: 1px solid var(--line); background: #1A1E22; outline: none; }
+table.sx { border-collapse: separate; border-spacing: 0; table-layout: fixed; color: #E6E9EB; font: 13.5px "Segoe UI", system-ui, sans-serif; user-select: none; }
+table.sx thead th { position: sticky; top: 0; z-index: 2; background: #121518; color: #8B949A; font: 600 12px var(--sans); letter-spacing: 0; text-transform: none; text-align: center; padding: 3px 0;
+  border-right: 1px solid #2A3036; border-bottom: 1px solid #363D44; }
+table.sx tbody th { position: sticky; left: 0; z-index: 1; background: #121518; color: #8B949A; font: 12px var(--sans); text-align: center; width: 46px; min-width: 46px; padding: 0 4px;
+  border-right: 1px solid #363D44; border-bottom: 1px solid #2A3036; cursor: default; }
 table.sx th.sx-corner { left: 0; z-index: 3; width: 46px; min-width: 46px; }
-table.sx th.hl { background: #DDEBC0; color: #111; }
+table.sx th.hl { background: #2B3318; color: var(--neon); }
 table.sx th { position: relative; }
 .sx-rz { position: absolute; right: -3px; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 4; }
-table.sx td { height: 24px; padding: 0 6px; border-right: 1px solid #E3E6E9; border-bottom: 1px solid #E3E6E9; white-space: nowrap; overflow: hidden; text-overflow: clip; cursor: cell; }
+table.sx td { height: 24px; padding: 0 6px; border-right: 1px solid #2A3036; border-bottom: 1px solid #2A3036; white-space: nowrap; overflow: hidden; text-overflow: clip; cursor: cell; }
 table.sx td.n { text-align: right; } table.sx td.c { text-align: center; } table.sx td.b { font-weight: 700; }
 table.sx td.al-l { text-align: left; } table.sx td.al-c { text-align: center; } table.sx td.al-r { text-align: right; }
-table.sx td.err { color: #C62828; text-align: center; font-weight: 600; }
-table.sx td.sel { background: #EAF5CC; }
-table.sx td.cur { outline: 2px solid #3E7B00; outline-offset: -2px; background: #fff; }
-.sx-edit { position: absolute; z-index: 5; border: 2px solid #3E7B00; padding: 0 5px; font: 13.5px "Segoe UI", system-ui, sans-serif; color: #111; background: #fff; outline: none; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+table.sx td.err { color: #FF7B7B; text-align: center; font-weight: 600; }
+table.sx td.sel { background: #26301A; }
+table.sx td.cur { outline: 2px solid var(--neon); outline-offset: -2px; background: #1A1E22; }
+.sx-edit { position: absolute; z-index: 5; border: 2px solid var(--neon); padding: 0 5px; font: 13.5px "Segoe UI", system-ui, sans-serif; color: #F2F3F3; background: #23282D; outline: none; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 .sx-tabs { display: flex; gap: 2px; margin-top: 6px; align-items: center; }
 .sx-tabs button { background: var(--raised); border: 1px solid var(--line); color: var(--muted); padding: 6px 14px; cursor: pointer; font: 13px var(--sans); }
-.sx-tabs button.on { background: #fff; color: #111; border-top: 2px solid #3E7B00; font-weight: 600; }
+.sx-tabs button.on { background: #23282D; color: var(--text); border-top: 2px solid var(--neon); font-weight: 600; }
 .sx-tabs button.warn { color: var(--warn); }
